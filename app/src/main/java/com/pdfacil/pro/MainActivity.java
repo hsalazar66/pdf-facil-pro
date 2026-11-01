@@ -40,7 +40,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/** PDF Fácil Pro beta: funciona localmente y no utiliza servidores externos. */
+/** PDF Útil Pro HS beta: funciona localmente y no utiliza servidores externos. */
 public class MainActivity extends Activity {
     private static final int REQUEST_OPEN = 101;
     private static final int REQUEST_IMAGES = 102;
@@ -173,7 +173,7 @@ public class MainActivity extends Activity {
         button.setOnClickListener(v -> onClick.run());
     }
     private void home() {
-        frame("PDF Fácil Pro", "Editar  ·  Crear  ·  Organizar  ·  Compartir");
+        frame("PDF Útil Pro HS", "Editar  ·  Crear  ·  Organizar  ·  Compartir");
         pair("📂  Abrir PDF", "Desde tu celular", BLUE, this::choosePdf,
              "📄  Crear PDF", "Desde fotografías", Color.rgb(242, 58, 67), this::chooseImages);
         pair("✏  Editar PDF", "Texto, dibujos y resaltado", PURPLE, this::editPdf,
@@ -185,7 +185,7 @@ public class MainActivity extends Activity {
         addVerticalSpace(content, 12);
         action(content, "📑  Documentos recientes", PANEL, this::openRecent);
         action(content, "⚙  Información y privacidad", PANEL, () -> showMessage(
-           "PDF Fácil Pro — versión beta. Los documentos se procesan en el celular. " +
+           "PDF Útil Pro HS — versión beta. Los documentos se procesan en el celular. " +
            "Esta versión permite anotar, guardar copias, crear PDF desde fotos, unir y extraer páginas. " +
            "No modifica el texto original, no tiene OCR ni conversión Word."));
     }
