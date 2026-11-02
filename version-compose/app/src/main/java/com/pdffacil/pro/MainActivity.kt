@@ -1,6 +1,6 @@
 package com.pdffacil.pro
 
-import android.app.Activity
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
@@ -35,15 +35,22 @@ import kotlinx.coroutines.*
 import java.io.File
 
 class MainActivity : ComponentActivity() {
+ private var incomingPdf by mutableStateOf<Intent?>(null)
  override fun onCreate(savedInstanceState: Bundle?) {
   super.onCreate(savedInstanceState)
+  incomingPdf = intent.takeIf { it.action == Intent.ACTION_VIEW }
   PDFBoxResourceLoader.init(applicationContext)
-  setContent { MaterialTheme(colorScheme = lightColorScheme(primary = Color(0xFF17685C), background = Color(0xFFF4F7F5))) { Editor() } }
+  setContent { MaterialTheme(colorScheme = lightColorScheme(primary = Color(0xFF17685C), background = Color(0xFFF4F7F5))) { Editor(incomingPdf) { incomingPdf = null } } }
+ }
+ override fun onNewIntent(intent: Intent) {
+  super.onNewIntent(intent)
+  setIntent(intent)
+  if (intent.action == Intent.ACTION_VIEW) incomingPdf = intent
  }
 }
 private data class Mark(val page: Int, val kind: String, val points: List<Offset>, val text: String = "")
 
-@Composable private fun Editor() {
+@Composable private fun Editor(incomingPdf: Intent?, onIncomingHandled: () -> Unit) {
  val context = androidx.compose.ui.platform.LocalContext.current
  val scope = rememberCoroutineScope()
  var file by remember { mutableStateOf<File?>(null) }
@@ -104,6 +111,16 @@ private data class Mark(val page: Int, val kind: String, val points: List<Offset
    }; status = "Copia PDF guardada correctamente"
   }
  }
+ LaunchedEffect(incomingPdf, busy) {
+  if (busy) return@LaunchedEffect
+  incomingPdf?.let { incoming ->
+   val uri = incoming.data
+   if (uri?.scheme == "content") {
+    if (marks.isNotEmpty()) confirmAction = { pending = uri } else pending = uri
+   } else status = "No se puede abrir este enlace. Elige un archivo PDF local."
+   onIncomingHandled()
+  }
+ }
  LaunchedEffect(pending) { pending?.let { open(it, false) }; pending = null }
  LaunchedEffect(file, page) {
   val source = file ?: return@LaunchedEffect
@@ -113,6 +130,7 @@ private data class Mark(val page: Int, val kind: String, val points: List<Offset
  Scaffold { padding -> Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
   Text("PDF Fácil Pro", fontSize = 28.sp, color = MaterialTheme.colorScheme.primary)
   Text(status, style = MaterialTheme.typography.bodyMedium)
+  DefaultViewerPrompt(offerAutomatically = incomingPdf == null, enabled = !busy)
   Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
    Button(onClick = { if (marks.isNotEmpty()) confirmAction = { picker.launch(arrayOf("application/pdf")) } else picker.launch(arrayOf("application/pdf")) }, enabled = !busy) { Text("Abrir PDF") }
    if (file != null) OutlinedButton(onClick = { save.launch("PDF-Facil-${System.currentTimeMillis()}.pdf") }, enabled = !busy) { Text("Guardar copia") }

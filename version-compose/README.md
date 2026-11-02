@@ -40,3 +40,17 @@ PDFBox Android se distribuye con licencia Apache 2.0; consulta https://github.co
 ## GitHub Actions
 
 Esta variante se aloja en `version-compose/` para conservar la aplicación Java existente en la raíz del repositorio. El flujo `Compilar PDF Facil Pro Compose` compila y analiza esta variante en cada cambio relevante. Descarga `PDF-Facil-Pro-Compose-APK` desde Artifacts de una ejecución exitosa. El APK de esta variante tiene un identificador de aplicación distinto al de la versión Java y puede instalarse por separado. Las claves de depuración de GitHub son temporales: las actualizaciones entre ejecuciones podrían requerir desinstalar la versión anterior, lo que borra sus documentos privados; exporta tus archivos primero.
+
+## Actualización 1.1-beta: icono y visor predeterminado
+
+Se incorpora el icono elegido (opción 2: documento PDF con texto editable), como icono adaptable de Android.
+
+En el primer inicio desde el lanzador, se ofrece «¿Usar PDF Fácil Pro como visor predeterminado?». «Ahora no» descarta la oferta y «Sí, elegir visor» abre un PDF de ejemplo local mediante ACTION_VIEW. En el selector de Android, el usuario debe elegir PDF Fácil Pro y «Siempre», cuando el sistema lo permita. No se usa createChooser porque no permite guardar esa preferencia. La app registra únicamente que mostró la oferta; no asegura que Android haya cambiado el visor.
+
+Si ya existe otro visor predeterminado, Android podría abrirlo directamente: la oferta explica cómo borrar los valores predeterminados de ese visor en Ajustes y volver a intentarlo. El botón «Visor predeterminado» permite repetir el proceso. Los nombres de opciones dependen del fabricante. Algunas aplicaciones externas fuerzan su propio visor o muestran su propio selector.
+
+El filtro VIEW acepta documentos content:// con MIME application/pdf. La app importa la copia antes de leerla; acepta nuevas aperturas con onNewIntent y pide confirmación si hay anotaciones en sesión. FileProvider comparte solamente la carpeta temporal del PDF de ejemplo, con acceso de lectura temporal.
+
+Esta actualización no incorpora todavía el editor de texto original ni el menú de la maqueta. El icono describe el objetivo de la aplicación; esas funciones siguen pendientes.
+
+Pruebas manuales pendientes: instalación limpia y aceptación/rechazo de la oferta; elegir «Siempre» y abrir otro PDF desde Archivos; repetir con un visor ya predeterminado; abrir PDF con la app iniciada y con anotaciones; cancelar el selector; verificar el icono con máscaras circular y cuadrada. El comportamiento de asociaciones requiere prueba en un teléfono o emulador.
