@@ -100,23 +100,20 @@ wait_for('Informe de trabajo.pdf')  # Private document survived the package upda
 
 fixture = Path('app/build/verification/imagen-movible.pdf')
 assert fixture.is_file(), 'Falta el PDF generado por la prueba de imagen'
-adb('push', str(fixture), '/sdcard/Download/imagen-movible.pdf')
-inserted = adb('shell', 'content', 'insert', '--uri', 'content://media/external/file',
-               '--bind', '_data:s:/sdcard/Download/imagen-movible.pdf',
-               '--bind', 'mime_type:s:application/pdf',
-               '--bind', '_display_name:s:imagen-movible.pdf')
-match = re.search(r'content://[^\s]+', inserted)
-if match:
-    fixture_uri = match.group(0)
-else:
-    # Android 10's content command can insert successfully without printing the URI.
-    rows = adb('shell', 'content', 'query', '--uri', 'content://media/external/file', '--projection', '_id:_display_name')
-    row = next((line for line in rows.splitlines() if 'imagen-movible.pdf' in line), '')
-    ident = re.search(r'_id=(\d+)', row)
-    assert ident, 'No se encontró la fila de prueba: ' + rows
-    fixture_uri = 'content://media/external/file/' + ident.group(1)
+def stage_fixture():
+    # Inject only into the debuggable test APK; production APKs do not permit run-as.
+    adb('shell', 'run-as', APP, 'mkdir', '-p', 'cache/visor_demo')
+    subprocess.run(['adb', 'shell', '-T', 'run-as', APP, 'dd',
+                    'of=cache/visor_demo/imagen-movible.pdf', 'bs=4096'],
+                   input=fixture.read_bytes(), stdout=subprocess.PIPE,
+                   stderr=subprocess.PIPE, check=True, timeout=30)
+    actual = adb('exec-out', 'run-as', APP, 'cat', 'cache/visor_demo/imagen-movible.pdf', binary=True)
+    assert actual == fixture.read_bytes(), 'Se alteró el PDF de prueba al copiarlo'
+    return 'content://' + APP + '.files/visor_demo/imagen-movible.pdf'
+
+fixture_uri = stage_fixture()
 adb('shell', 'am', 'start', '-W', '-n', APP + '/.MainActivity', '-a', 'android.intent.action.VIEW',
-    '-t', 'application/pdf', '-d', fixture_uri, '--grant-read-uri-permission')
+    '-t', 'application/pdf', '-d', fixture_uri)
 wait_for('imagen-movible.pdf')
 tap('Editar')
 tap('Imagen')
@@ -132,8 +129,9 @@ wait_for('Imagen movida', partial=True)
 screenshot('05-imagen-movida')
 # A clean first launch from an external PDF must also display the offer.
 adb('shell', 'pm', 'clear', APP)
+fixture_uri = stage_fixture()
 adb('shell', 'am', 'start', '-W', '-n', APP + '/.MainActivity', '-a', 'android.intent.action.VIEW',
-    '-t', 'application/pdf', '-d', fixture_uri, '--grant-read-uri-permission')
+    '-t', 'application/pdf', '-d', fixture_uri)
 wait_for(QUESTION)
 screenshot('06-oferta-desde-pdf-externo')
 tap('Ahora no')

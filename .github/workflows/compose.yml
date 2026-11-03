@@ -28,6 +28,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
       - name: Compilar y probar texto e imágenes
         run: gradle :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --no-daemon --stacktrace
       - name: Habilitar aceleración del emulador
