@@ -1,3 +1,7 @@
+import java.io.File
+import java.net.URI
+import java.security.MessageDigest
+
 plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id("org.jetbrains.kotlin.plugin.compose") }
 android {
  namespace = "com.pdffacil.pro"
@@ -43,12 +47,12 @@ val prepareFonts by tasks.registering {
  doLast {
   val folder = layout.projectDirectory.dir("src/main/assets/fonts").asFile
   folder.mkdirs()
-  fun checksum(file: java.io.File): String = java.security.MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { "%02x".format(it) }
+  fun checksum(file: File): String = MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { "%02x".format(it) }
   fontChecksums.forEach { (name, expected) ->
-   val fontFile = java.io.File(folder, name)
+   val fontFile = File(folder, name)
    if (!fontFile.exists() || checksum(fontFile) != expected) {
-    val temporary = java.io.File(folder, "$name.download")
-    val address = java.net.URI("https://raw.githubusercontent.com/shardulvs/pdfinspector-android/ced9758304bd1310b3cc0b7914794154aa3a5710/app/src/main/assets/fonts/$name").toURL()
+    val temporary = File(folder, "$name.download")
+    val address = URI("https://raw.githubusercontent.com/shardulvs/pdfinspector-android/ced9758304bd1310b3cc0b7914794154aa3a5710/app/src/main/assets/fonts/$name").toURL()
     address.openConnection().apply { connectTimeout = 30000; readTimeout = 60000 }.getInputStream().use { input -> temporary.outputStream().use { input.copyTo(it) } }
     check(checksum(temporary) == expected) { "La fuente $name no supera SHA-256" }
     temporary.copyTo(fontFile, overwrite = true)
