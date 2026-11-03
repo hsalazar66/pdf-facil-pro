@@ -213,7 +213,7 @@ class MainActivity : ComponentActivity() {
     }
    },enabled=!busy,modifier=Modifier.fillMaxWidth()) { Text("Probar edición con un PDF de ejemplo") }
    OutlinedTextField(query,{query=it},label={Text("Buscar documentos recientes")},singleLine=true,modifier=Modifier.fillMaxWidth())
-   Text("Edición real de texto · Versión 2.1 beta",fontSize=12.sp,color=MaterialTheme.colorScheme.primary)
+   Text("Edición real de texto · Versión 2.2 beta",fontSize=12.sp,color=MaterialTheme.colorScheme.primary)
    Text("Recientes",style=MaterialTheme.typography.titleMedium)
    LazyColumn(Modifier.weight(1f)) {
     items(recent.filter { it.name.contains(query,true) }) { f ->
@@ -329,7 +329,7 @@ class MainActivity : ComponentActivity() {
   var term by remember { mutableStateOf("") }
   AlertDialog(onDismissRequest={search=false},title={Text("Buscar en esta página")},text={Column { OutlinedTextField(term,{term=it},label={Text("Texto a buscar")});view?.fragments?.filter { term.isNotBlank() && it.text.contains(term,true) }?.forEach { f -> TextButton(onClick={search=false;tab="Editar";selected=f}) { Text(f.text,maxLines=2) } } }},confirmButton={TextButton(onClick={search=false}) { Text("Cerrar") }})
  }
- if(about) AlertDialog(onDismissRequest={about=false},title={Text("PDF Fácil Pro 2.1 beta")},text={Column(Modifier.verticalScroll(rememberScrollState())) {
+ if(about) AlertDialog(onDismissRequest={about=false},title={Text("PDF Fácil Pro 2.2 beta")},text={Column(Modifier.verticalScroll(rememberScrollState())) {
   Text("Editor gratuito, local y sin anuncios. La edición sustituye fragmentos de texto dentro del PDF. No incluye OCR ni redistribución automática de párrafos.\n\nMotor basado en PDF Inspector, de Shardul Vikram Singh (MIT), y PDFBox Android (Apache 2.0). Fuentes Liberation con sus licencias. Avisos incluidos en la aplicación.")
   Text(context.assets.open("LICENCIA-PDF-INSPECTOR-MIT.txt").bufferedReader().use { it.readText() },fontSize=10.sp)
  }},confirmButton={TextButton(onClick={about=false}) { Text("Cerrar") }})

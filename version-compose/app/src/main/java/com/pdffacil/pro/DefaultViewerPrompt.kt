@@ -18,17 +18,27 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Android owns PDF associations. A local preference records only that we asked. */
+/** Android owns PDF associations. A versioned preference records only that we asked, never that Android accepted. */
 @Composable
 internal fun DefaultViewerPrompt(offerAutomatically: Boolean, enabled: Boolean) {
  val context = LocalContext.current
  val prefs = remember { context.getSharedPreferences("preferencias", Context.MODE_PRIVATE) }
- var show by remember { mutableStateOf(offerAutomatically && !prefs.getBoolean("visor_ofrecido", false)) }
+ val versionActual = remember(context) {
+  context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode
+ }
+ var show by remember { mutableStateOf(false) }
+ // The legacy boolean is intentionally ignored: it must not suppress an upgrade offer.
+ LaunchedEffect(offerAutomatically, enabled, versionActual) {
+  if (offerAutomatically && enabled &&
+      prefs.getLong("visor_version_ofrecida", -1L) != versionActual) {
+   show = true
+  }
+ }
  var launching by remember { mutableStateOf(false) }
  var error by remember { mutableStateOf<String?>(null) }
  val scope = rememberCoroutineScope()
  fun dismiss() {
-  prefs.edit().putBoolean("visor_ofrecido", true).apply()
+  prefs.edit().putLong("visor_version_ofrecida", versionActual).apply()
   show = false
  }
  TextButton(onClick = { show = true }, enabled = enabled && !launching) {
@@ -36,7 +46,7 @@ internal fun DefaultViewerPrompt(offerAutomatically: Boolean, enabled: Boolean) 
  }
  if (show) AlertDialog(
   onDismissRequest = { dismiss() },
-  title = { Text("¿Usar PDF Fácil Pro como visor predeterminado?") },
+  title = { Text("¿Quieres abrir tus PDF con PDF Fácil Pro?") },
   text = { Text("Se abrirá un PDF de ejemplo. En la pantalla de Android elige PDF Fácil Pro y pulsa «Siempre», si aparece.\n\nSi se abre directamente otro visor, ve a Ajustes → Aplicaciones → ese visor → Abrir de forma predeterminada y borra sus valores predeterminados. Después vuelve a intentarlo. Los nombres pueden variar según tu celular.") },
   confirmButton = {
    TextButton(onClick = {
@@ -71,7 +81,7 @@ internal fun DefaultViewerPrompt(offerAutomatically: Boolean, enabled: Boolean) 
       error = "No se pudo abrir el ejemplo. También puedes abrir un PDF desde Archivos y elegir PDF Fácil Pro → Siempre en el selector de Android."
      } finally { launching = false }
     }
-   }) { Text("Sí, elegir visor") }
+   }) { Text("Configurar ahora") }
   },
   dismissButton = { TextButton(onClick = { dismiss() }) { Text("Ahora no") } },
  )

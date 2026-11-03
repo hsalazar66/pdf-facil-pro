@@ -1,4 +1,4 @@
-# PDF Fácil Pro 2.1 beta — edición del texto original
+# PDF Fácil Pro 2.2 beta — edición del texto original
 
 Aplicación Android en español, gratuita, local y sin permiso de internet. Android 10 o superior. Esta variante Kotlin está en `version-compose/` en GitHub; la aplicación Java histórica permanece en la raíz del repositorio.
 
@@ -21,7 +21,7 @@ El menú corresponde a controles reales. No todas las posibilidades de la maquet
 
 ## Cómo comprobar la edición
 
-1. En Inicio, confirma que aparece **Versión 2.1 beta**.
+1. En Inicio, confirma que aparece **Versión 2.2 beta**.
 2. Pulsa **Probar edición con un PDF de ejemplo** o abre un PDF con texto seleccionable.
 3. Entra en **Editar** y toca «Este texto original se puede seleccionar y modificar.».
 4. Cambia la frase. Si la fuente original no admite nuevas letras, selecciona Sans.
@@ -49,7 +49,7 @@ Los originales externos no se sobrescriben. Cada documento se importa al almacen
 
 ## Compilación y pruebas
 
-En GitHub Actions, el flujo **Compilar PDF Facil Pro Compose** ejecuta `:app:testDebugUnitTest :app:assembleDebug :app:lintDebug`. Descarga únicamente el artefacto **PDF-Facil-Pro-2.1-Menus-APK**, que contiene `PDF-Facil-Pro-2.1-beta.apk`. Los artefactos antiguos corresponden a versiones anteriores.
+En GitHub Actions, el flujo **Compilar PDF Facil Pro Compose** ejecuta `:app:testDebugUnitTest :app:assembleDebug :app:lintDebug`. Descarga únicamente el artefacto **PDF-Facil-Pro-2.2-Visor-APK**, que contiene `PDF-Facil-Pro-2.2-beta.apk`. Los artefactos antiguos corresponden a versiones anteriores.
 
 Las cuatro pruebas comprueban: reemplazo real al guardar y reabrir sin añadir otra instrucción de texto; tamaño y color sin alterar el fragmento vecino; sustitución de fuente con caracteres españoles conservando otra página; restauración del contenido anterior. Se usa PDFBox real, con un puente de recursos exclusivo para pruebas JVM que lee los mismos assets de su AAR. Ese puente no se incluye en la APK.
 
@@ -70,3 +70,11 @@ Las fuentes se descargan solo al compilar desde la revisión `ced9758304bd1310b3
 ## Diseño 2.1
 
 Menú de modos con iconos Ver, Editar, Anotar y Más (Herramientas). Tarjetas Modificar, Texto nuevo e Imagen; flechas para deshacer/rehacer junto a la ayuda; controles de páginas y botones de lectura con iconos. Colores verde, blanco y gris, sin la selección violeta anterior. Página ajustada al ancho y alto disponibles, centrada y con margen uniforme. Se conserva el motor de edición y sus pruebas de regresión.
+
+## Visor predeterminado: cambio 2.2
+
+En el primer inicio de cada versión desde Inicio se ofrece configurar el visor. Se registra el versionCode al elegir Configurar ahora, Ahora no o cerrar el diálogo, por lo que no se insiste en cada apertura de la misma versión. El antiguo indicador booleano visor_ofrecido no bloquea la oferta después de actualizar. El botón Visor predeterminado permite repetirla manualmente. La oferta se pospone mientras la aplicación está ocupada.
+
+Configurar ahora abre el ejemplo mediante ACTION_VIEW para que Android permita elegir PDF Fácil Pro y Siempre. No se utiliza createChooser en este proceso. La aplicación no se autoconfigura ni registra que sea el visor predeterminado solo por pulsar aceptar. Si ya existe otro visor, la guía explica cómo borrar su asociación. La oferta aparece al abrir la aplicación, no durante la instalación ni desde un servicio en segundo plano. Los visores integrados en otras apps pueden no respetar la asociación del sistema.
+
+Prueba en teléfono: abrir 2.2 desde el icono y comprobar la oferta; elegir Ahora no y reiniciar para verificar que no se repite; usar el botón Visor predeterminado para volver a mostrarla; pulsar Configurar ahora y completar la elección en Android; abrir otro PDF desde Archivos. Para comprobar una actualización real sin desinstalar es necesario que la APK anterior y la nueva tengan la misma clave de firma. Las compilaciones de depuración de ejecutores distintos no lo garantizan. La comprobación de la asociación requiere un teléfono o emulador.

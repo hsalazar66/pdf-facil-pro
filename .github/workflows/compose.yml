@@ -30,14 +30,14 @@ jobs:
           gradle-version: '8.9'
       - name: Compilar y analizar
         run: gradle :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --no-daemon --stacktrace
-      - name: Preparar entrega 2.1
+      - name: Preparar entrega 2.2
         run: |
           mkdir -p entrega
-          cp app/build/outputs/apk/debug/app-debug.apk entrega/PDF-Facil-Pro-2.1-beta.apk
+          cp app/build/outputs/apk/debug/app-debug.apk entrega/PDF-Facil-Pro-2.2-beta.apk
           cp README.md entrega/INSTRUCCIONES.md
       - uses: actions/upload-artifact@v4
         with:
-          name: PDF-Facil-Pro-2.1-Menus-APK
+          name: PDF-Facil-Pro-2.2-Visor-APK
           path: version-compose/entrega/*
           if-no-files-found: error
           retention-days: 30
