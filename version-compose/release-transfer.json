@@ -1,0 +1,17 @@
+{
+  "version": "2.3-beta",
+  "filename": "PDF-Facil-Pro-2.3-beta.apk",
+  "sha256": "2a9041a4b29f89d497c101268e658794f6bbdb2d84fcf7749a41c3b0bfed5f09",
+  "chunks": [
+    "e3fff990997600173596dbe4efab759025dcbaf5",
+    "51ed0622d95287aee168b59f7917aa4a0ee3f604",
+    "acb2293147aefca38116b761bf772d8daed1979d",
+    "e3ad03a718196ac8be75a6664975a9c54c068f7d",
+    "8c480e3de742246460c384f80580f4580772ba15",
+    "76342db161d3da53dcd6384493f3c34950abee3f",
+    "cfe03ad43379ebca3ba5b63f015f41d0fd08fe49",
+    "964745e428e7eda0836d1645f91a647a8d68199d"
+  ],
+  "source_commit": "2181f9510c1b233d034f0b1524654bf2b4c02221",
+  "verification_run": 41664233311
+}
