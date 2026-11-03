@@ -50,3 +50,5 @@ Para compilar: JDK 17, SDK 35, Gradle 8.9; `./gradlew :app:testDebugUnitTest :ap
 Sin OCR, redistribución automática de párrafos, firma digital certificada ni conversión a Word. El texto alargado puede solaparse; revisa el resultado. Los PDF protegidos, dañados o muy grandes pueden no ser compatibles.
 
 Motor adaptado de PDF Inspector, Copyright 2026 Shardul Vikram Singh (MIT), PDFBox Android y AndroidX (Apache 2.0), fuentes Liberation con licencia incluida. Avisos y licencias se incluyen en los assets y el repositorio. Información permite consultar el aviso MIT.
+
+El flujo de push/ejecución manual también arranca un emulador Android 10 (API 29) y ejecuta `scripts/android_smoke.py`. Comprueba oferta inicial, rechazo y repetición manual, reinstalación con la misma firma conservando un borrador, oferta tras actualización, apertura externa y arrastre de una imagen. Las capturas se publican como Verificacion-Android-2.3 y usan únicamente documentos sintéticos.

@@ -10,6 +10,7 @@ import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.ByteArrayOutputStream
+import java.io.File
 
 class ImageMovementTest {
  private fun fixture(rotation:Int=0):ByteArray = PDDocument().use { doc ->
@@ -26,7 +27,10 @@ class ImageMovementTest {
   ByteArrayOutputStream().also {doc.save(it)}.toByteArray()
  }
  @Test fun movingExistingImageSurvivesSaveWithoutMovingOtherOccurrence() {
-  PDDocument.load(fixture()).use { doc ->
+  val original=fixture()
+  File("build/verification").mkdirs()
+  File("build/verification/imagen-movible.pdf").writeBytes(original)
+  PDDocument.load(original).use { doc ->
    val page=doc.getPage(0);val parsed=ContentStreamEngine.parse(page)
    val before=parsed.leaves.filter {it.kind==NodeKind.IMAGE}
    moveImage(doc,0,0,Offset(20f/page.cropBox.width,-30f/page.cropBox.height))

@@ -11,7 +11,7 @@ permissions:
 jobs:
   compilar:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: version-compose
@@ -30,6 +30,29 @@ jobs:
           gradle-version: '8.9'
       - name: Compilar y probar texto e imágenes
         run: gradle :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --no-daemon --stacktrace
+      - name: Habilitar aceleración del emulador
+        if: github.event_name != 'pull_request'
+        run: sudo chmod 666 /dev/kvm
+      - name: Probar primer inicio, actualización e imágenes en Android
+        if: github.event_name != 'pull_request'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: pixel_2
+          cores: 2
+          ram-size: 2048M
+          working-directory: version-compose
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: python3 scripts/android_smoke.py
+      - name: Publicar capturas y prueba Android
+        if: always() && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Verificacion-Android-2.3
+          path: version-compose/verification-android/
+          if-no-files-found: ignore
       - name: Preparar firma permanente
         id: firma
         env:
