@@ -7,7 +7,24 @@ android {
  namespace = "com.pdffacil.pro"
  compileSdk = 35
  buildToolsVersion = "35.0.0"
- defaultConfig { applicationId = "com.pdffacil.pro"; minSdk = 29; targetSdk = 35; versionCode = 5; versionName = "2.2-beta" }
+ defaultConfig { applicationId = "com.pdffacil.pro"; minSdk = 29; targetSdk = 35; versionCode = 6; versionName = "2.3-beta" }
+ signingConfigs {
+  val keyPath = System.getenv("ANDROID_SIGNING_KEYSTORE_PATH")
+  if (!keyPath.isNullOrBlank()) {
+   create("permanente") {
+    storeFile = file(keyPath)
+    storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+    keyAlias = "pdffacilpro"
+    keyPassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+   }
+  }
+ }
+ buildTypes {
+  getByName("release") {
+   isMinifyEnabled = false
+   signingConfigs.findByName("permanente")?.let { signingConfig = it }
+  }
+ }
  buildFeatures { compose = true }
  testOptions { unitTests.isReturnDefaultValues = true }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }

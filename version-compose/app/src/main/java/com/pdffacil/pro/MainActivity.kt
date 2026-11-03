@@ -81,6 +81,12 @@ class MainActivity : ComponentActivity() {
  var selected by remember { mutableStateOf<TextFragment?>(null) }
  var addTextAt by remember { mutableStateOf<Offset?>(null) }
  var addingText by remember { mutableStateOf(false) }
+ var movingImages by remember { mutableStateOf(false) }
+ var selectedImage by remember { mutableStateOf<Int?>(null) }
+ var draggingImage by remember { mutableStateOf<Int?>(null) }
+ var imageDelta by remember { mutableStateOf(Offset.Zero) }
+ var defaultRequest by remember { mutableIntStateOf(0) }
+ var detectedViewer by remember { mutableStateOf<String?>(null) }
  var newValue by remember { mutableStateOf("") }
  var stroke by remember { mutableStateOf(listOf<Offset>()) }
  var pageW by remember { mutableIntStateOf(1) }
@@ -96,7 +102,7 @@ class MainActivity : ComponentActivity() {
  }
  suspend fun refresh(file: File, at: Int=page) {
   val p=withContext(Dispatchers.IO) { preview(file,at) }
-  view=p;page=at;zoom=1f;pan=Offset.Zero;selected=null;stroke=emptyList()
+  view=p;page=at;zoom=1f;pan=Offset.Zero;selected=null;selectedImage=null;draggingImage=null;imageDelta=Offset.Zero;stroke=emptyList()
  }
  suspend fun establish(source: File, name: String, existingDraft: File?=null) {
   val pair=withContext(Dispatchers.IO) {
@@ -120,7 +126,7 @@ class MainActivity : ComponentActivity() {
     };establish(info.first,info.second)
    } catch(e:Exception) { status="No se pudo abrir el PDF: ${e.localizedMessage}" }
  }
- fun change(label:String, transform:(PDDocument)->Unit) = task {
+ fun change(label:String, selectImageAfter:Int?=null, transform:(PDDocument)->Unit) = task {
   val source=current ?: return@task
   val next=withContext(Dispatchers.IO) {
    val result=File.createTempFile("revision-",".pdf",work)
@@ -133,6 +139,7 @@ class MainActivity : ComponentActivity() {
   }
   val maxPage=withContext(Dispatchers.IO) { PDDocument.load(next).use { it.numberOfPages-1 } }
   refresh(next,page.coerceAtMost(maxPage))
+  if(selectImageAfter!=null && !view!!.images.isEmpty()) selectedImage=selectImageAfter.coerceAtMost(view!!.images.lastIndex)
   withContext(Dispatchers.IO) { draft?.let { next.copyTo(it,true) } }
   history=history.take(revision+1)+next;revision=history.lastIndex;current=next;exported=false;status="$label · borrador guardado en el dispositivo"
  }
@@ -153,14 +160,14 @@ class MainActivity : ComponentActivity() {
   if(uri!=null) change("Documentos unidos") { doc -> context.contentResolver.openInputStream(uri)!!.use { input -> PDDocument.load(input).use { extra -> for(p in extra.pages) doc.importPage(p) } } }
  }
  val image=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-  if(uri!=null) change("Imagen insertada en el centro de la página") { doc ->
+  if(uri!=null) { movingImages=true;addingText=false;change("Imagen añadida: arrastra su marco para moverla",selectImageAfter=Int.MAX_VALUE) { doc ->
    // Bound decoding before allocation; mobile photos can exceed available memory.
    val options=BitmapFactory.Options().apply { inJustDecodeBounds=true }
    context.contentResolver.openInputStream(uri)!!.use { BitmapFactory.decodeStream(it,null,options) }
    var factor=1;while(options.outWidth/factor>2000 || options.outHeight/factor>2000) factor*=2
    val bmp=context.contentResolver.openInputStream(uri)!!.use { BitmapFactory.decodeStream(it,null,BitmapFactory.Options().apply { inSampleSize=factor }) } ?: error("Imagen incompatible")
    try { addImage(doc,page,bmp) } finally { bmp.recycle() }
-  }
+  } }
  }
  fun askBeforeLeaving(action:()->Unit) {
   if(!exported) { confirmMessage="Los cambios están guardados como borrador en Recientes. Puedes exportar una copia PDF antes de cambiar de documento.";confirm=action } else action()
@@ -175,6 +182,7 @@ class MainActivity : ComponentActivity() {
    consumeIncoming()
   }
  }
+ DefaultViewerPrompt(enabled=!busy && selected==null && !pagesDialog && !search && confirm==null,manualRequest=defaultRequest) { detectedViewer=it }
  Scaffold { padding -> Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(padding).padding(horizontal=12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
   Row(Modifier.fillMaxWidth().padding(top=6.dp),verticalAlignment=Alignment.CenterVertically) {
    if(current!=null) MenuIconButton("Anterior",enabled=!busy) { askBeforeLeaving { home() } }
@@ -188,7 +196,7 @@ class MainActivity : ComponentActivity() {
   if(busy) LinearProgressIndicator(Modifier.fillMaxWidth())
   Text(if(status.startsWith("PDF guardado")) "Cambios guardados" else status,fontSize=12.sp,color=if(status.startsWith("No se pudo")) MaterialTheme.colorScheme.error else MenuMuted,maxLines=2,overflow=TextOverflow.Ellipsis)
   if(current==null) {
-   DefaultViewerPrompt(offerAutomatically=incoming==null,enabled=!busy)
+   DefaultViewerCard(enabled=!busy,detectedPackage=detectedViewer) { defaultRequest++ }
    Text("¿Qué quieres hacer hoy?",fontSize=23.sp,fontWeight=FontWeight.SemiBold)
    Button(onClick={ picker.launch(arrayOf("application/pdf")) },enabled=!busy,modifier=Modifier.fillMaxWidth().height(52.dp)) { Text("Abrir PDF",fontSize=17.sp) }
    OutlinedButton(onClick={
@@ -213,12 +221,15 @@ class MainActivity : ComponentActivity() {
     }
    },enabled=!busy,modifier=Modifier.fillMaxWidth()) { Text("Probar edición con un PDF de ejemplo") }
    OutlinedTextField(query,{query=it},label={Text("Buscar documentos recientes")},singleLine=true,modifier=Modifier.fillMaxWidth())
-   Text("Edición real de texto · Versión 2.2 beta",fontSize=12.sp,color=MaterialTheme.colorScheme.primary)
+   Text("Edición real de texto · Versión 2.3 beta",fontSize=12.sp,color=MaterialTheme.colorScheme.primary)
    Text("Recientes",style=MaterialTheme.typography.titleMedium)
    LazyColumn(Modifier.weight(1f)) {
     items(recent.filter { it.name.contains(query,true) }) { f ->
      Card(Modifier.fillMaxWidth().padding(vertical=4.dp).clickable(enabled=!busy) { askBeforeLeaving { startSession(f,f.name.substringAfter('-'),f) } }) {
-      Column(Modifier.padding(14.dp)) { Text(f.name.substringAfter('-'),maxLines=1,fontWeight=FontWeight.SemiBold);Text("En este dispositivo · borrador local",fontSize=12.sp) }
+      Row(Modifier.padding(14.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+       Image(painterResource(com.pdffacil.pro.R.drawable.ic_pdf_foreground),"Documento PDF",Modifier.size(40.dp).background(MenuGreen,RoundedCornerShape(10.dp)))
+       Column(Modifier.weight(1f)) { Text(f.name.substringAfter('-'),maxLines=1,fontWeight=FontWeight.SemiBold);Text("En este dispositivo · borrador local",fontSize=12.sp) }
+      }
      }
     }
    }
@@ -227,14 +238,19 @@ class MainActivity : ComponentActivity() {
     TextButton(onClick={ about=true }) { Text("Información") }
    }
   } else {
-   ModeMenu(active=tab,enabled=!busy) { mode -> tab=mode;addingText=false;stroke=emptyList() }
+   ModeMenu(active=tab,enabled=!busy) { mode -> tab=mode;addingText=false;movingImages=false;selectedImage=null;stroke=emptyList() }
    if(tab=="Editar") {
     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-     MenuAction("Modificar",Modifier.weight(1f),selected=!addingText,enabled=!busy) { addingText=false }
-     MenuAction("Texto nuevo",Modifier.weight(1f),selected=addingText,enabled=!busy) { addingText=true }
-     MenuAction("Imagen",Modifier.weight(1f),enabled=!busy) { image.launch("image/*") }
+     MenuAction("Modificar",Modifier.weight(1f),selected=!addingText && !movingImages,enabled=!busy) { addingText=false;movingImages=false;selectedImage=null }
+     MenuAction("Texto nuevo",Modifier.weight(1f),selected=addingText,enabled=!busy) { addingText=true;movingImages=false;selectedImage=null }
+     MenuAction("Imagen",Modifier.weight(1f),selected=movingImages,enabled=!busy) { movingImages=true;addingText=false }
     }
-    if(view?.fragments?.isEmpty()==true) Text("Esta página no tiene texto editable compatible. OCR aún no disponible.",fontSize=12.sp,color=MaterialTheme.colorScheme.error)
+    if(movingImages) Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
+     TextButton(onClick={image.launch("image/*")},enabled=!busy) { Text("＋ Añadir imagen") }
+     Text(if(selectedImage==null) "Toca una imagen" else "Imagen ${selectedImage!!+1} seleccionada",fontSize=12.sp,color=MenuMuted)
+    }
+    if(movingImages && view?.images?.isEmpty()==true) Text("No se detectan imágenes independientes. Puedes añadir una con el botón de arriba.",fontSize=12.sp,color=MenuMuted)
+    if(!movingImages && view?.fragments?.isEmpty()==true) Text("Esta página no tiene texto editable compatible. OCR aún no disponible.",fontSize=12.sp,color=MaterialTheme.colorScheme.error)
    }
    if(tab=="Anotar") Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
     MenuAction("Resaltar",Modifier.weight(1f),selected=annotation=="Resaltar",enabled=!busy) { annotation="Resaltar" }
@@ -250,30 +266,46 @@ class MainActivity : ComponentActivity() {
    }
    if(tab!="Ver") Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
     Text(when(tab) {
-     "Editar" -> if(addingText) "Toca donde quieres escribir." else "Toca una frase para modificarla."
+     "Editar" -> if(movingImages) "Arrastra el marco y suelta para mover la imagen." else if(addingText) "Toca donde quieres escribir." else "Toca una frase para modificarla."
      "Anotar" -> if(annotation=="Firma") "Dibuja tu firma con el dedo." else "Arrastra sobre lo que quieres resaltar."
      else -> "Organiza tu documento."
     },fontSize=12.sp,color=MenuMuted,modifier=Modifier.weight(1f),maxLines=2)
     MenuIconButton("Deshacer",enabled=!busy && revision>0) { restore(revision-1) }
     MenuIconButton("Rehacer",enabled=!busy && revision<history.lastIndex) { restore(revision+1) }
    }
-   BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(18.dp)).clipToBounds().background(Color(0xFFE7EEEA)).pointerInput(tab,busy) {
-    if(!busy && tab!="Anotar") detectTransformGestures { _, delta, scale, _ -> zoom=(zoom*scale).coerceIn(1f,4f);pan=if(zoom>1f) pan+delta else Offset.Zero }
+   BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(18.dp)).clipToBounds().background(Color(0xFFE7EEEA)).pointerInput(tab,busy,movingImages) {
+    if(!busy && tab!="Anotar" && !(tab=="Editar" && movingImages)) detectTransformGestures { _, delta, scale, _ -> zoom=(zoom*scale).coerceIn(1f,4f);pan=if(zoom>1f) pan+delta else Offset.Zero }
    },contentAlignment=Alignment.Center) {
     view?.let { p ->
      val ratio=p.bitmap.width.toFloat()/p.bitmap.height
      val fittedWidth=minOf(maxWidth-16.dp,(maxHeight-16.dp)*ratio).coerceAtLeast(1.dp)
      Box(Modifier.size(fittedWidth,fittedWidth/ratio).shadow(3.dp,RoundedCornerShape(2.dp)).graphicsLayer(scaleX=zoom,scaleY=zoom,translationX=pan.x,translationY=pan.y)
       .onSizeChanged { pageW=it.width;pageH=it.height }
-      .pointerInput(p,tab,addingText,busy) {
+      .pointerInput(p,tab,addingText,movingImages,busy) {
        if(!busy && tab=="Editar") detectTapGestures { point ->
         val norm=Offset(point.x/pageW,point.y/pageH)
-        if(addingText) { addTextAt=norm;newValue="" }
+        if(movingImages) {
+         selectedImage=p.images.filter { it.rect.contains(norm) }.minByOrNull { it.rect.width*it.rect.height }?.ordinal
+        } else if(addingText) { addTextAt=norm;newValue="" }
         else {
          val hit=p.fragments.filter { f -> val r=f.rect;norm.x>=r.left-0.006f && norm.x<=r.right+0.006f && norm.y>=r.top-0.006f && norm.y<=r.bottom+0.006f }.minByOrNull { it.rect.width*it.rect.height }
          selected=hit;if(hit==null) status="Toca dentro de un fragmento con borde verde."
         }
        }
+      }.pointerInput(p,tab,movingImages,busy) {
+       if(!busy && tab=="Editar" && movingImages) detectDragGestures(
+        onDragStart={point ->
+         val norm=Offset(point.x/pageW,point.y/pageH)
+         val hit=p.images.filter { it.rect.contains(norm) }.minByOrNull { it.rect.width*it.rect.height }
+         draggingImage=hit?.ordinal;selectedImage=hit?.ordinal;imageDelta=Offset.Zero
+        },
+        onDragCancel={draggingImage=null;imageDelta=Offset.Zero},
+        onDragEnd={
+         val which=draggingImage;val delta=imageDelta
+         draggingImage=null;imageDelta=Offset.Zero
+         if(which!=null && delta.getDistance()>0.001f) change("Imagen movida",selectImageAfter=which) { doc -> moveImage(doc,page,which,delta) }
+        }
+       ) { event,amount -> if(draggingImage!=null) { event.consume();imageDelta+=Offset(amount.x/pageW,amount.y/pageH) } }
       }.pointerInput(p,tab,annotation,busy) {
        if(!busy && tab=="Anotar") detectDragGestures(onDragStart={stroke=listOf(Offset(it.x/pageW,it.y/pageH))},onDragCancel={stroke=emptyList()},onDragEnd={
         val points=stroke;stroke=emptyList();if(points.size>1) change(if(annotation=="Firma") "Firma añadida" else "Área resaltada") { doc -> addAnnotation(doc,page,annotation,points) }
@@ -281,7 +313,14 @@ class MainActivity : ComponentActivity() {
       }) {
       Image(p.bitmap.asImageBitmap(),"Página ${page+1} del documento",Modifier.fillMaxSize())
       Canvas(Modifier.fillMaxSize()) {
-       if(tab=="Editar" && !addingText) p.fragments.forEach { f -> val r=f.rect;drawRect(Color(0x8017685C),Offset(r.left*size.width,r.top*size.height),Size(r.width*size.width,r.height*size.height),style=Stroke(1.5f)) }
+       if(tab=="Editar" && !addingText && !movingImages) p.fragments.forEach { f -> val r=f.rect;drawRect(Color(0x8017685C),Offset(r.left*size.width,r.top*size.height),Size(r.width*size.width,r.height*size.height),style=Stroke(1.5f)) }
+       if(tab=="Editar" && movingImages) p.images.forEach { image ->
+        val delta=if(draggingImage==image.ordinal) imageDelta else Offset.Zero
+        val r=image.rect.translate(delta);val chosen=selectedImage==image.ordinal
+        val ink=if(chosen) MenuGreen else Color(0x80146B5B)
+        drawRect(ink,Offset(r.left*size.width,r.top*size.height),Size(r.width*size.width,r.height*size.height),style=Stroke(if(chosen) 3f else 1.5f))
+        if(chosen) listOf(Offset(r.left,r.top),Offset(r.right,r.top),Offset(r.left,r.bottom),Offset(r.right,r.bottom)).forEach { pt -> drawCircle(ink,5.dp.toPx(),Offset(pt.x*size.width,pt.y*size.height)) }
+       }
        val points=stroke.map { Offset(it.x*size.width,it.y*size.height) }
        if(points.size>1) if(annotation=="Resaltar") {
         val a=points.first();val b=points.last();drawRect(Color(0x66FFD200),Offset(minOf(a.x,b.x),minOf(a.y,b.y)),Size(kotlin.math.abs(a.x-b.x),kotlin.math.abs(a.y-b.y)))
@@ -329,7 +368,7 @@ class MainActivity : ComponentActivity() {
   var term by remember { mutableStateOf("") }
   AlertDialog(onDismissRequest={search=false},title={Text("Buscar en esta página")},text={Column { OutlinedTextField(term,{term=it},label={Text("Texto a buscar")});view?.fragments?.filter { term.isNotBlank() && it.text.contains(term,true) }?.forEach { f -> TextButton(onClick={search=false;tab="Editar";selected=f}) { Text(f.text,maxLines=2) } } }},confirmButton={TextButton(onClick={search=false}) { Text("Cerrar") }})
  }
- if(about) AlertDialog(onDismissRequest={about=false},title={Text("PDF Fácil Pro 2.2 beta")},text={Column(Modifier.verticalScroll(rememberScrollState())) {
+ if(about) AlertDialog(onDismissRequest={about=false},title={Text("PDF Fácil Pro 2.3 beta")},text={Column(Modifier.verticalScroll(rememberScrollState())) {
   Text("Editor gratuito, local y sin anuncios. La edición sustituye fragmentos de texto dentro del PDF. No incluye OCR ni redistribución automática de párrafos.\n\nMotor basado en PDF Inspector, de Shardul Vikram Singh (MIT), y PDFBox Android (Apache 2.0). Fuentes Liberation con sus licencias. Avisos incluidos en la aplicación.")
   Text(context.assets.open("LICENCIA-PDF-INSPECTOR-MIT.txt").bufferedReader().use { it.readText() },fontSize=10.sp)
  }},confirmButton={TextButton(onClick={about=false}) { Text("Cerrar") }})

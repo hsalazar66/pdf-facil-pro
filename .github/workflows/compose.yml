@@ -28,25 +28,83 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Compilar y analizar
+      - name: Compilar y probar texto e imágenes
         run: gradle :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --no-daemon --stacktrace
-      - name: Preparar entrega 2.2
+      - name: Preparar firma permanente
+        id: firma
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ]; then
+            python3 - <<'PY'
+          import base64, os
+          from pathlib import Path
+          key = Path(os.environ['RUNNER_TEMP']) / 'pdf-facil-pro-permanente.jks'
+          key.write_bytes(base64.b64decode(os.environ['ANDROID_KEYSTORE_BASE64'].strip(), validate=True))
+          key.chmod(0o600)
+          with open(os.environ['GITHUB_ENV'], 'a') as target:
+              target.write('ANDROID_SIGNING_KEYSTORE_PATH=' + str(key) + '\n')
+          PY
+            echo 'available=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'available=false' >> "$GITHUB_OUTPUT"
+            echo '::warning::Faltan los secretos de firma permanente. La APK de release se compilará sin firma para firmarla con la clave del propietario; no es una APK instalable todavía.'
+          fi
+      - name: Compilar release
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: gradle :app:assembleRelease --no-daemon --stacktrace
+      - name: Verificar y preparar APK actualizable
+        if: steps.firma.outputs.available == 'true'
         run: |
           mkdir -p entrega
-          cp app/build/outputs/apk/debug/app-debug.apk entrega/PDF-Facil-Pro-2.2-beta.apk
+          cp app/build/outputs/apk/release/app-release.apk entrega/PDF-Facil-Pro-2.3-beta.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs entrega/PDF-Facil-Pro-2.3-beta.apk > entrega/FIRMA.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          expected = Path('signing-certificate.sha256').read_text().strip().lower()
+          report = Path('entrega/FIRMA.txt').read_text()
+          match = re.search(r'Signer #1 certificate SHA-256 digest: ([0-9a-fA-F]+)', report)
+          assert match and match.group(1).lower() == expected, 'La firma no corresponde a la clave permanente de esta app'
+          PY
           cp README.md entrega/INSTRUCCIONES.md
       - uses: actions/upload-artifact@v4
+        if: steps.firma.outputs.available == 'true'
         with:
-          name: PDF-Facil-Pro-2.2-Visor-APK
+          name: PDF-Facil-Pro-2.3-Actualizable-APK
           path: version-compose/entrega/*
           if-no-files-found: error
           retention-days: 30
+      - name: Preparar release para firma del propietario
+        if: steps.firma.outputs.available != 'true'
+        run: |
+          mkdir -p pendiente-firma
+          cp app/build/outputs/apk/release/app-release-unsigned.apk pendiente-firma/PDF-Facil-Pro-2.3-sin-firma.apk
+          cp README.md pendiente-firma/INSTRUCCIONES.md
+      - uses: actions/upload-artifact@v4
+        if: steps.firma.outputs.available != 'true'
+        with:
+          name: PDF-Facil-Pro-2.3-Para-Firmar-NO-INSTALAR
+          path: version-compose/pendiente-firma/*
+          if-no-files-found: error
+          retention-days: 7
       - name: Publicar resultados de pruebas
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Pruebas-editor-real
+          name: Pruebas-texto-imagenes
           path: |
             version-compose/app/build/reports/tests/testDebugUnitTest/
             version-compose/app/build/reports/lint-results-debug.html
           if-no-files-found: ignore
+      - name: Retirar clave temporal del ejecutor
+        if: always() && steps.firma.outputs.available == 'true'
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          key = Path(os.environ['RUNNER_TEMP']) / 'pdf-facil-pro-permanente.jks'
+          key.unlink(missing_ok=True)
+          PY
