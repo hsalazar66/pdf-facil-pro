@@ -22,6 +22,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -47,7 +50,7 @@ class MainActivity : ComponentActivity() {
   super.onCreate(savedInstanceState)
   PDFBoxResourceLoader.init(applicationContext)
   incoming=intent.takeIf { it.action==Intent.ACTION_VIEW }
-  setContent { MaterialTheme(colorScheme=lightColorScheme(primary=Color(0xFF17685C),background=Color(0xFFF3F6F5),surface=Color.White)) { PdfApp(incoming) { incoming=null } } }
+  setContent { MaterialTheme(colorScheme=lightColorScheme(primary=MenuGreen,onPrimary=Color.White,primaryContainer=Color(0xFFE6F3EE),secondary=MenuGreen,secondaryContainer=Color(0xFFE6F3EE),onSecondaryContainer=MenuGreen,background=Color(0xFFF4F7F5),surface=Color.White,onSurface=MenuInk,outline=Color(0xFFD6E1DB))) { PdfApp(incoming) { incoming=null } } }
  }
  override fun onNewIntent(intent: Intent) { super.onNewIntent(intent);setIntent(intent);if(intent.action==Intent.ACTION_VIEW) incoming=intent }
 }
@@ -174,16 +177,16 @@ class MainActivity : ComponentActivity() {
  }
  Scaffold { padding -> Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(padding).padding(horizontal=12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
   Row(Modifier.fillMaxWidth().padding(top=6.dp),verticalAlignment=Alignment.CenterVertically) {
-   if(current!=null) TextButton(onClick={ askBeforeLeaving { home() } },enabled=!busy) { Text("‹ Inicio") }
+   if(current!=null) MenuIconButton("Anterior",enabled=!busy) { askBeforeLeaving { home() } }
    else Image(painterResource(com.pdffacil.pro.R.drawable.ic_pdf_foreground),"Icono de PDF Fácil Pro",Modifier.size(44.dp).background(MaterialTheme.colorScheme.primary,RoundedCornerShape(10.dp)))
    Column(Modifier.weight(1f).padding(horizontal=6.dp)) {
-    Text(if(current==null) "PDF Fácil Pro" else title,maxLines=1,fontSize=if(current==null) 25.sp else 15.sp,fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.primary)
+    Text(if(current==null) "PDF Fácil Pro" else title,maxLines=1,overflow=TextOverflow.Ellipsis,fontSize=if(current==null) 25.sp else 15.sp,fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.primary)
     Text(if(current==null) "Tus documentos, siempre contigo" else "${if(exported) "PDF" else "Borrador"} · Página ${page+1} de ${view?.count ?: 0}",fontSize=12.sp)
    }
-   if(current!=null) Button(onClick={ save.launch(title.removeSuffix(".pdf")+"-editado.pdf") },enabled=!busy) { Text("Guardar") }
+   if(current!=null) Button(onClick={ save.launch(title.removeSuffix(".pdf")+"-editado.pdf") },enabled=!busy,shape=RoundedCornerShape(14.dp),contentPadding=PaddingValues(horizontal=12.dp,vertical=12.dp)) { EditorIcon("Guardar",Color.White,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text("Guardar",fontSize=13.sp,fontWeight=FontWeight.SemiBold) }
   }
   if(busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-  Text(status,fontSize=12.sp,color=MaterialTheme.colorScheme.primary,maxLines=3)
+  Text(if(status.startsWith("PDF guardado")) "Cambios guardados" else status,fontSize=12.sp,color=if(status.startsWith("No se pudo")) MaterialTheme.colorScheme.error else MenuMuted,maxLines=2,overflow=TextOverflow.Ellipsis)
   if(current==null) {
    DefaultViewerPrompt(offerAutomatically=incoming==null,enabled=!busy)
    Text("¿Qué quieres hacer hoy?",fontSize=23.sp,fontWeight=FontWeight.SemiBold)
@@ -210,7 +213,7 @@ class MainActivity : ComponentActivity() {
     }
    },enabled=!busy,modifier=Modifier.fillMaxWidth()) { Text("Probar edición con un PDF de ejemplo") }
    OutlinedTextField(query,{query=it},label={Text("Buscar documentos recientes")},singleLine=true,modifier=Modifier.fillMaxWidth())
-   Text("Edición real de texto · Versión 2.0 beta",fontSize=12.sp,color=MaterialTheme.colorScheme.primary)
+   Text("Edición real de texto · Versión 2.1 beta",fontSize=12.sp,color=MaterialTheme.colorScheme.primary)
    Text("Recientes",style=MaterialTheme.typography.titleMedium)
    LazyColumn(Modifier.weight(1f)) {
     items(recent.filter { it.name.contains(query,true) }) { f ->
@@ -224,39 +227,43 @@ class MainActivity : ComponentActivity() {
     TextButton(onClick={ about=true }) { Text("Información") }
    }
   } else {
-   Row(Modifier.fillMaxWidth()) { listOf("Ver","Editar","Anotar","Herramientas").forEach { item ->
-    FilterChip(selected=tab==item,onClick={tab=item;addingText=false;stroke=emptyList()},enabled=!busy,label={Text(item,fontSize=12.sp)},modifier=Modifier.weight(1f).padding(horizontal=2.dp))
-   } }
+   ModeMenu(active=tab,enabled=!busy) { mode -> tab=mode;addingText=false;stroke=emptyList() }
    if(tab=="Editar") {
-    Text(if(addingText) "Toca donde quieres añadir texto nuevo." else "Toca el texto original para modificarlo. Los bordes indican fragmentos editables.",fontSize=12.sp)
-    Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(5.dp)) {
-     OutlinedButton(onClick={addingText=false},enabled=!busy) { Text("Seleccionar texto") }
-     OutlinedButton(onClick={addingText=true},enabled=!busy) { Text("Añadir texto") }
-     OutlinedButton(onClick={image.launch("image/*")},enabled=!busy) { Text("Imagen") }
+    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+     MenuAction("Modificar",Modifier.weight(1f),selected=!addingText,enabled=!busy) { addingText=false }
+     MenuAction("Texto nuevo",Modifier.weight(1f),selected=addingText,enabled=!busy) { addingText=true }
+     MenuAction("Imagen",Modifier.weight(1f),enabled=!busy) { image.launch("image/*") }
     }
-    if(view?.fragments?.isEmpty()==true) Text("No se detectó texto editable en esta página. Puede ser un escaneo o contenido convertido en imágenes/trazados. OCR aún no disponible.",fontSize=12.sp,color=MaterialTheme.colorScheme.error)
+    if(view?.fragments?.isEmpty()==true) Text("Esta página no tiene texto editable compatible. OCR aún no disponible.",fontSize=12.sp,color=MaterialTheme.colorScheme.error)
    }
-   if(tab=="Anotar") {
-    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) { listOf("Resaltar","Firma").forEach { option -> FilterChip(annotation==option,{annotation=option},label={Text(option)},enabled=!busy) } }
-    Text(if(annotation=="Firma") "Dibuja tu firma con el dedo. Es una firma manuscrita, sin certificado." else "Arrastra sobre un área para resaltarla.",fontSize=12.sp)
+   if(tab=="Anotar") Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+    MenuAction("Resaltar",Modifier.weight(1f),selected=annotation=="Resaltar",enabled=!busy) { annotation="Resaltar" }
+    MenuAction("Firma",Modifier.weight(1f),selected=annotation=="Firma",enabled=!busy) { annotation="Firma" }
    }
-   if(tab=="Herramientas") {
-    Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-     OutlinedButton(onClick={merge.launch(arrayOf("application/pdf"))},enabled=!busy) { Text("Unir PDF") }
-     OutlinedButton(onClick={change("Página girada") { doc -> val p=doc.getPage(page);p.rotation=(p.rotation+90)%360 }},enabled=!busy) { Text("Girar página") }
-     OutlinedButton(onClick={confirmMessage="¿Eliminar la página ${page+1}? Puedes recuperar este cambio con Deshacer.";confirm={change("Página eliminada") { doc -> require(doc.numberOfPages>1) { "El PDF debe conservar al menos una página." };doc.removePage(page) }}},enabled=!busy && (view?.count ?: 0)>1) { Text("Eliminar página") }
+   if(tab=="Herramientas") Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+    MenuAction("Unir PDF",Modifier.weight(1f),enabled=!busy) { merge.launch(arrayOf("application/pdf")) }
+    MenuAction("Girar",Modifier.weight(1f),enabled=!busy) { change("Página girada") { doc -> val p=doc.getPage(page);p.rotation=(p.rotation+90)%360 } }
+    MenuAction("Eliminar",Modifier.weight(1f),enabled=!busy && (view?.count ?: 0)>1,danger=true) {
+     confirmMessage="¿Eliminar la página ${page+1}? Puedes recuperarla con Deshacer."
+     confirm={change("Página eliminada") { doc -> require(doc.numberOfPages>1) { "El PDF debe conservar una página." };doc.removePage(page) }}
     }
    }
-   if(tab!="Ver") Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-    TextButton(onClick={restore(revision-1)},enabled=!busy && revision>0) { Text("↶ Deshacer") }
-    TextButton(onClick={restore(revision+1)},enabled=!busy && revision<history.lastIndex) { Text("↷ Rehacer") }
+   if(tab!="Ver") Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+    Text(when(tab) {
+     "Editar" -> if(addingText) "Toca donde quieres escribir." else "Toca una frase para modificarla."
+     "Anotar" -> if(annotation=="Firma") "Dibuja tu firma con el dedo." else "Arrastra sobre lo que quieres resaltar."
+     else -> "Organiza tu documento."
+    },fontSize=12.sp,color=MenuMuted,modifier=Modifier.weight(1f),maxLines=2)
+    MenuIconButton("Deshacer",enabled=!busy && revision>0) { restore(revision-1) }
+    MenuIconButton("Rehacer",enabled=!busy && revision<history.lastIndex) { restore(revision+1) }
    }
-   Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().background(Color(0xFFE0E5E3)).pointerInput(tab,busy) {
+   BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(18.dp)).clipToBounds().background(Color(0xFFE7EEEA)).pointerInput(tab,busy) {
     if(!busy && tab!="Anotar") detectTransformGestures { _, delta, scale, _ -> zoom=(zoom*scale).coerceIn(1f,4f);pan=if(zoom>1f) pan+delta else Offset.Zero }
    },contentAlignment=Alignment.Center) {
     view?.let { p ->
      val ratio=p.bitmap.width.toFloat()/p.bitmap.height
-     Box(Modifier.aspectRatio(ratio,matchHeightConstraintsFirst=true).fillMaxHeight().graphicsLayer(scaleX=zoom,scaleY=zoom,translationX=pan.x,translationY=pan.y)
+     val fittedWidth=minOf(maxWidth-16.dp,(maxHeight-16.dp)*ratio).coerceAtLeast(1.dp)
+     Box(Modifier.size(fittedWidth,fittedWidth/ratio).shadow(3.dp,RoundedCornerShape(2.dp)).graphicsLayer(scaleX=zoom,scaleY=zoom,translationX=pan.x,translationY=pan.y)
       .onSizeChanged { pageW=it.width;pageH=it.height }
       .pointerInput(p,tab,addingText,busy) {
        if(!busy && tab=="Editar") detectTapGestures { point ->
@@ -283,23 +290,25 @@ class MainActivity : ComponentActivity() {
      }
     }
    }
-   Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
-    TextButton(onClick={task { current?.let { refresh(it,page-1) } }},enabled=!busy && page>0) { Text("‹ Anterior",fontSize=12.sp) }
-    TextButton(onClick={pagesDialog=true},enabled=!busy) { Text("${page+1} / ${view?.count ?: 0}") }
-    TextButton(onClick={task { current?.let { refresh(it,page+1) } }},enabled=!busy && page+1<(view?.count ?: 0)) { Text("Siguiente ›",fontSize=12.sp) }
+   Surface(shape=RoundedCornerShape(16.dp),color=Color.White,border=androidx.compose.foundation.BorderStroke(1.dp,Color(0xFFE1E9E5))) {
+    Row(Modifier.fillMaxWidth().padding(horizontal=6.dp),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
+     MenuIconButton("Anterior",enabled=!busy && page>0) { task { current?.let { refresh(it,page-1) } } }
+     TextButton(onClick={pagesDialog=true},enabled=!busy) { EditorIcon("Páginas",MenuGreen,Modifier.size(18.dp));Spacer(Modifier.width(7.dp));Text("Página ${page+1} de ${view?.count ?: 0}",fontSize=13.sp,fontWeight=FontWeight.SemiBold) }
+     MenuIconButton("Siguiente",enabled=!busy && page+1<(view?.count ?: 0)) { task { current?.let { refresh(it,page+1) } } }
+    }
    }
-   if(tab=="Ver") Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceEvenly) {
-    TextButton(onClick={search=true},enabled=!busy) { Text("Buscar") }
-    TextButton(onClick={zoom=(zoom+0.5f).coerceAtMost(4f)},enabled=!busy) { Text("Zoom +") }
-    TextButton(onClick={zoom=1f;pan=Offset.Zero},enabled=!busy) { Text("Ajustar") }
-    TextButton(onClick={task {
+   if(tab=="Ver") Row(Modifier.fillMaxWidth().padding(bottom=4.dp),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+    MenuAction("Buscar",Modifier.weight(1f),enabled=!busy) { search=true }
+    MenuAction("Ampliar",Modifier.weight(1f),enabled=!busy) { zoom=(zoom+0.5f).coerceAtMost(4f) }
+    MenuAction("Ajustar",Modifier.weight(1f),enabled=!busy) { zoom=1f;pan=Offset.Zero }
+    MenuAction("Compartir",Modifier.weight(1f),enabled=!busy,onClick={task {
      val uri=withContext(Dispatchers.IO) {
       val folder=File(context.cacheDir,"compartir").apply { mkdirs() }
       val target=File(folder,"Documento-editado.pdf");current!!.copyTo(target,true)
       androidx.core.content.FileProvider.getUriForFile(context,"${context.packageName}.files",target)
      }
      context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type="application/pdf";putExtra(Intent.EXTRA_STREAM,uri);clipData=android.content.ClipData.newRawUri("PDF",uri);addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) },"Compartir PDF"))
-    }},enabled=!busy) { Text("Compartir") }
+    }})
    }
   }
  } }
@@ -320,7 +329,7 @@ class MainActivity : ComponentActivity() {
   var term by remember { mutableStateOf("") }
   AlertDialog(onDismissRequest={search=false},title={Text("Buscar en esta página")},text={Column { OutlinedTextField(term,{term=it},label={Text("Texto a buscar")});view?.fragments?.filter { term.isNotBlank() && it.text.contains(term,true) }?.forEach { f -> TextButton(onClick={search=false;tab="Editar";selected=f}) { Text(f.text,maxLines=2) } } }},confirmButton={TextButton(onClick={search=false}) { Text("Cerrar") }})
  }
- if(about) AlertDialog(onDismissRequest={about=false},title={Text("PDF Fácil Pro 2.0 beta")},text={Column(Modifier.verticalScroll(rememberScrollState())) {
+ if(about) AlertDialog(onDismissRequest={about=false},title={Text("PDF Fácil Pro 2.1 beta")},text={Column(Modifier.verticalScroll(rememberScrollState())) {
   Text("Editor gratuito, local y sin anuncios. La edición sustituye fragmentos de texto dentro del PDF. No incluye OCR ni redistribución automática de párrafos.\n\nMotor basado en PDF Inspector, de Shardul Vikram Singh (MIT), y PDFBox Android (Apache 2.0). Fuentes Liberation con sus licencias. Avisos incluidos en la aplicación.")
   Text(context.assets.open("LICENCIA-PDF-INSPECTOR-MIT.txt").bufferedReader().use { it.readText() },fontSize=10.sp)
  }},confirmButton={TextButton(onClick={about=false}) { Text("Cerrar") }})

@@ -1,4 +1,4 @@
-# PDF Fácil Pro 2.0 beta — edición del texto original
+# PDF Fácil Pro 2.1 beta — edición del texto original
 
 Aplicación Android en español, gratuita, local y sin permiso de internet. Android 10 o superior. Esta variante Kotlin está en `version-compose/` en GitHub; la aplicación Java histórica permanece en la raíz del repositorio.
 
@@ -21,7 +21,7 @@ El menú corresponde a controles reales. No todas las posibilidades de la maquet
 
 ## Cómo comprobar la edición
 
-1. En Inicio, confirma que aparece **Versión 2.0 beta**.
+1. En Inicio, confirma que aparece **Versión 2.1 beta**.
 2. Pulsa **Probar edición con un PDF de ejemplo** o abre un PDF con texto seleccionable.
 3. Entra en **Editar** y toca «Este texto original se puede seleccionar y modificar.».
 4. Cambia la frase. Si la fuente original no admite nuevas letras, selecciona Sans.
@@ -49,7 +49,7 @@ Los originales externos no se sobrescriben. Cada documento se importa al almacen
 
 ## Compilación y pruebas
 
-En GitHub Actions, el flujo **Compilar PDF Facil Pro Compose** ejecuta `:app:testDebugUnitTest :app:assembleDebug :app:lintDebug`. Descarga únicamente el artefacto **PDF-Facil-Pro-2.0-Editor-Real-APK**, que contiene `PDF-Facil-Pro-2.0-beta.apk`. Los artefactos antiguos corresponden a versiones anteriores.
+En GitHub Actions, el flujo **Compilar PDF Facil Pro Compose** ejecuta `:app:testDebugUnitTest :app:assembleDebug :app:lintDebug`. Descarga únicamente el artefacto **PDF-Facil-Pro-2.1-Menus-APK**, que contiene `PDF-Facil-Pro-2.1-beta.apk`. Los artefactos antiguos corresponden a versiones anteriores.
 
 Las cuatro pruebas comprueban: reemplazo real al guardar y reabrir sin añadir otra instrucción de texto; tamaño y color sin alterar el fragmento vecino; sustitución de fuente con caracteres españoles conservando otra página; restauración del contenido anterior. Se usa PDFBox real, con un puente de recursos exclusivo para pruebas JVM que lee los mismos assets de su AAR. Ese puente no se incluye en la APK.
 
@@ -66,3 +66,7 @@ El análisis y la reescritura del contenido se basan en [PDF Inspector](https://
 PDFBox Android y AndroidX usan Apache 2.0; se incluye el texto de licencia. Las fuentes Liberation incluyen sus avisos y su licencia en `app/src/main/assets/fonts/LICENSE-Liberation.txt`. La app permite consultar información y la licencia MIT desde Inicio → Información.
 
 Las fuentes se descargan solo al compilar desde la revisión `ced9758304bd1310b3cc0b7914794154aa3a5710` de PDF Inspector, verificadas con SHA-256. La APK las incluye y funciona sin descargarlas.
+
+## Diseño 2.1
+
+Menú de modos con iconos Ver, Editar, Anotar y Más (Herramientas). Tarjetas Modificar, Texto nuevo e Imagen; flechas para deshacer/rehacer junto a la ayuda; controles de páginas y botones de lectura con iconos. Colores verde, blanco y gris, sin la selección violeta anterior. Página ajustada al ancho y alto disponibles, centrada y con margen uniforme. Se conserva el motor de edición y sus pruebas de regresión.
