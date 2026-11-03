@@ -1,56 +1,68 @@
-# PDF Fácil Pro — primera versión básica
+# PDF Fácil Pro 2.0 beta — edición del texto original
 
-Aplicación nativa en Kotlin y Jetpack Compose para Android 10 o superior. Interfaz en español, sin publicidad, suscripciones, cuentas ni permiso de internet.
+Aplicación Android en español, gratuita, local y sin permiso de internet. Android 10 o superior. Esta variante Kotlin está en `version-compose/` en GitHub; la aplicación Java histórica permanece en la raíz del repositorio.
 
-## Funciones implementadas
+## Qué cambia frente al anotador 1.x
 
-- Abrir PDF con el selector del sistema y leer por páginas.
-- Añadir texto sobre una página (fuente Helvetica, 14 puntos).
-- Resaltar áreas rectangulares y dibujar firmas manuscritas.
-- Deshacer anotaciones, unir otro PDF al final y exportar una copia compatible con lectores PDF.
-- Volver a abrir documentos importados desde la lista de recientes.
+La pestaña **Editar** analiza las instrucciones originales del PDF. Toca un fragmento marcado con borde verde, modifica su contenido y pulsa **Aplicar cambios**. Se reemplaza la instrucción de texto existente; no se añade una caja superpuesta ni un rectángulo blanco para taparla.
 
-Los originales no se sobrescriben. Los documentos importados se copian al almacenamiento privado de la app. Las anotaciones están en memoria hasta exportar: guarda una copia antes de cerrar la app. Los recientes muestran las copias importadas, no las exportaciones. El selector del sistema puede ofrecer proveedores en la nube; elige un archivo local para trabajar sin conexión.
+Se puede conservar la fuente original o elegir Sans/Serif, negrita, cursiva, tamaño y color. Si la fuente original carece de caracteres, elige Sans o Serif. **Añadir texto** es una acción independiente para insertar contenido nuevo.
 
-## Instalar
+## Menús implementados
 
-Transfiere el APK al teléfono, ábrelo y permite la instalación desde esa fuente cuando Android lo solicite. Es una compilación de desarrollo firmada con una clave de depuración; para distribución estable se necesita una clave de publicación propia.
+- **Ver:** lectura, navegación de páginas, zoom con gestos/botón, ajuste, búsqueda en la página actual y compartir una copia.
+- **Editar:** selección y sustitución del texto original, formato, texto nuevo e inserción de una imagen en el centro de la página.
+- **Anotar:** resaltado por área y firma manuscrita, sin certificado digital.
+- **Herramientas:** unir otro PDF al final, girar y eliminar la página actual.
+- **Deshacer/Rehacer:** historial de revisiones de esta sesión.
+- **Guardar:** exportar el PDF modificado desde el selector de Android.
 
-## Compilar
+El menú corresponde a controles reales. No todas las posibilidades de la maqueta están implementadas: consulta los límites siguientes.
 
-Abre esta carpeta en Android Studio, instala SDK 35 y usa JDK 17 o 21. Ajusta `local.properties` con tu ruta del SDK (Android Studio lo genera). Ejecuta `./gradlew assembleDebug`. APK: `app/build/outputs/apk/debug/app-debug.apk`.
+## Cómo comprobar la edición
 
-## Límites de esta entrega
+1. En Inicio, confirma que aparece **Versión 2.0 beta**.
+2. Pulsa **Probar edición con un PDF de ejemplo** o abre un PDF con texto seleccionable.
+3. Entra en **Editar** y toca «Este texto original se puede seleccionar y modificar.».
+4. Cambia la frase. Si la fuente original no admite nuevas letras, selecciona Sans.
+5. Pulsa **Aplicar cambios** y **Guardar**.
+6. Abre el archivo exportado en otro lector y selecciona/copia el texto: debe contener la nueva frase y ya no la anterior.
 
-No incluye OCR, escáner, formularios, imágenes, conversión, zoom ni edición del texto original. Las firmas son dibujos, no firmas digitales certificadas. El resaltado es visual por área, no selección semántica. El texto añadido admite la codificación de Helvetica estándar, incluidos los caracteres habituales del español; otros símbolos pueden impedir la exportación y mostrar un error. Los PDF cifrados o dañados pueden rechazarse. Las páginas giradas se pueden leer, pero la exportación con anotaciones sobre ellas se rechaza para evitar posiciones incorrectas. Los archivos grandes se procesan en memoria y pueden superar la capacidad del dispositivo.
+## Icono y visor predeterminado
 
-## Comprobación manual en teléfono
+Icono elegido: documento PDF con cursor de texto (opción 2). En el primer inicio se ofrece elegir esta app como visor. Android exige seleccionar **PDF Fácil Pro → Siempre**, si esa opción está disponible. Si otro visor ya es predeterminado, puede ser necesario borrar sus valores predeterminados desde Ajustes. La app no cambia esa preferencia por sí sola ni asegura que el usuario la haya confirmado. El botón Visor predeterminado permite repetir la guía.
 
-1. Abrir un PDF local de varias páginas y avanzar/retroceder.
-2. Escribir “Revisión: información, año 2026”, tocar la página y comprobar su posición en el PDF exportado.
-3. Resaltar arrastrando en ambas direcciones, firmar y deshacer.
-4. Unir un segundo documento, exportar y comprobar el número de páginas en otro lector.
-5. Repetir en modo avión; comprobar que el original conserva su contenido.
-6. Cancelar los selectores y probar un archivo protegido o incompatible: debe mostrarse un error sin sobrescribirlo.
+## Archivos y privacidad
 
-Compilación de depuración y verificación de firma APK realizadas. Análisis estático Android Lint realizado sin errores; conserva advertencias de versiones de dependencias y de código TLS de Bouncy Castle (la app no tiene permiso de internet). No se ha realizado prueba en dispositivo o emulador en este entorno.
+Los originales externos no se sobrescriben. Cada documento se importa al almacenamiento privado de la aplicación. Los cambios aplicados se guardan como borrador local y aparecen en Recientes; usa Guardar para crear una copia PDF fuera de la app. Deshacer/Rehacer solo conserva el historial de la sesión actual. Las revisiones temporales están en caché y Android puede limpiarlas. No hay cuentas, anuncios, suscripciones ni transmisión de documentos. Al compartir con otra app, esa app recibe el PDF exportado.
 
-PDFBox Android se distribuye con licencia Apache 2.0; consulta https://github.com/TomRoush/PdfBox-Android. Las dependencias de AndroidX usan Apache 2.0. Conserva los avisos de las bibliotecas al redistribuir.
+## Límites explícitos
 
-## GitHub Actions
+- La unidad de edición es un **fragmento de texto del PDF**, que puede ser una palabra, línea o parte de una frase. No incluye redistribución automática de párrafos ni de páginas como Word.
+- Al alargar un fragmento puede solaparse con contenido vecino: revisa visualmente el resultado.
+- No hay OCR: las páginas escaneadas no se convierten en texto editable.
+- El texto dentro de objetos complejos, formularios, imágenes o trazados puede no ser editable. Los PDF dañados, con contraseña o restricciones pueden rechazarse o permitir solo lectura.
+- No incluye alineación de párrafos, subrayado tipográfico, conversión a Word, edición de formularios ni reordenación de páginas. No se muestran botones que prometan esas funciones.
+- La imagen insertada queda centrada, sin control de arrastre o redimensionado en esta beta.
+- Firma y resaltado se incorporan visualmente a la página; no son firmas digitales ni anotaciones semánticas.
+- PDFBox y la imagen de vista previa consumen memoria: documentos grandes pueden superar la capacidad del dispositivo.
 
-Esta variante se aloja en `version-compose/` para conservar la aplicación Java existente en la raíz del repositorio. El flujo `Compilar PDF Facil Pro Compose` compila y analiza esta variante en cada cambio relevante. Descarga `PDF-Facil-Pro-Compose-APK` desde Artifacts de una ejecución exitosa. El APK de esta variante tiene un identificador de aplicación distinto al de la versión Java y puede instalarse por separado. Las claves de depuración de GitHub son temporales: las actualizaciones entre ejecuciones podrían requerir desinstalar la versión anterior, lo que borra sus documentos privados; exporta tus archivos primero.
+## Compilación y pruebas
 
-## Actualización 1.1-beta: icono y visor predeterminado
+En GitHub Actions, el flujo **Compilar PDF Facil Pro Compose** ejecuta `:app:testDebugUnitTest :app:assembleDebug :app:lintDebug`. Descarga únicamente el artefacto **PDF-Facil-Pro-2.0-Editor-Real-APK**, que contiene `PDF-Facil-Pro-2.0-beta.apk`. Los artefactos antiguos corresponden a versiones anteriores.
 
-Se incorpora el icono elegido (opción 2: documento PDF con texto editable), como icono adaptable de Android.
+Las cuatro pruebas comprueban: reemplazo real al guardar y reabrir sin añadir otra instrucción de texto; tamaño y color sin alterar el fragmento vecino; sustitución de fuente con caracteres españoles conservando otra página; restauración del contenido anterior. Se usa PDFBox real, con un puente de recursos exclusivo para pruebas JVM que lee los mismos assets de su AAR. Ese puente no se incluye en la APK.
 
-En el primer inicio desde el lanzador, se ofrece «¿Usar PDF Fácil Pro como visor predeterminado?». «Ahora no» descarta la oferta y «Sí, elegir visor» abre un PDF de ejemplo local mediante ACTION_VIEW. En el selector de Android, el usuario debe elegir PDF Fácil Pro y «Siempre», cuando el sistema lo permita. No se usa createChooser porque no permite guardar esa preferencia. La app registra únicamente que mostró la oferta; no asegura que Android haya cambiado el visor.
+La compilación y los ensayos automatizados no sustituyen una prueba de interacción en un teléfono. No hay emulador ni teléfono disponible en este entorno. Quedan pendientes la comprobación visual, los gestos, los selectores externos y la asociación como visor en distintos fabricantes.
 
-Si ya existe otro visor predeterminado, Android podría abrirlo directamente: la oferta explica cómo borrar los valores predeterminados de ese visor en Ajustes y volver a intentarlo. El botón «Visor predeterminado» permite repetir el proceso. Los nombres de opciones dependen del fabricante. Algunas aplicaciones externas fuerzan su propio visor o muestran su propio selector.
+La APK es de desarrollo. Las claves de depuración de distintos ejecutores pueden diferir: si Android rechaza la actualización, exporta antes todos los documentos que quieras conservar y desinstala la versión previa; al desinstalar se borran sus borradores privados.
 
-El filtro VIEW acepta documentos content:// con MIME application/pdf. La app importa la copia antes de leerla; acepta nuevas aperturas con onNewIntent y pide confirmación si hay anotaciones en sesión. FileProvider comparte solamente la carpeta temporal del PDF de ejemplo, con acceso de lectura temporal.
+Para compilar en Android Studio: SDK 35, JDK 17, Gradle 8.9; genera `local.properties` con la ruta de tu SDK. También puedes ejecutar `./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug`.
 
-Esta actualización no incorpora todavía el editor de texto original ni el menú de la maqueta. El icono describe el objetivo de la aplicación; esas funciones siguen pendientes.
+## Créditos y licencias
 
-Pruebas manuales pendientes: instalación limpia y aceptación/rechazo de la oferta; elegir «Siempre» y abrir otro PDF desde Archivos; repetir con un visor ya predeterminado; abrir PDF con la app iniciada y con anotaciones; cancelar el selector; verificar el icono con máscaras circular y cuadrada. El comportamiento de asociaciones requiere prueba en un teléfono o emulador.
+El análisis y la reescritura del contenido se basan en [PDF Inspector](https://github.com/shardulvs/pdfinspector-android), Copyright 2026 Shardul Vikram Singh, licencia MIT incluida en `LICENCIA-PDF-INSPECTOR-MIT.txt` y en los assets de la APK. Se ha añadido restauración del color tras editar un fragmento para conservar el color del contenido posterior.
+
+PDFBox Android y AndroidX usan Apache 2.0; se incluye el texto de licencia. Las fuentes Liberation incluyen sus avisos y su licencia en `app/src/main/assets/fonts/LICENSE-Liberation.txt`. La app permite consultar información y la licencia MIT desde Inicio → Información.
+
+Las fuentes se descargan solo al compilar desde la revisión `ced9758304bd1310b3cc0b7914794154aa3a5710` de PDF Inspector, verificadas con SHA-256. La APK las incluye y funciona sin descargarlas.

@@ -4,3 +4,6 @@ local.properties
 *.jks
 
 .kotlin/
+
+app/src/main/assets/fonts/*.ttf
+*.download
