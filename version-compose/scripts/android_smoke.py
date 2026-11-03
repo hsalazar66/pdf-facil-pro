@@ -106,9 +106,17 @@ inserted = adb('shell', 'content', 'insert', '--uri', 'content://media/external/
                '--bind', 'mime_type:s:application/pdf',
                '--bind', '_display_name:s:imagen-movible.pdf')
 match = re.search(r'content://[^\s]+', inserted)
-assert match, inserted
+if match:
+    fixture_uri = match.group(0)
+else:
+    # Android 10's content command can insert successfully without printing the URI.
+    rows = adb('shell', 'content', 'query', '--uri', 'content://media/external/file', '--projection', '_id:_display_name')
+    row = next((line for line in rows.splitlines() if 'imagen-movible.pdf' in line), '')
+    ident = re.search(r'_id=(\d+)', row)
+    assert ident, 'No se encontró la fila de prueba: ' + rows
+    fixture_uri = 'content://media/external/file/' + ident.group(1)
 adb('shell', 'am', 'start', '-W', '-n', APP + '/.MainActivity', '-a', 'android.intent.action.VIEW',
-    '-t', 'application/pdf', '-d', match.group(0), '--grant-read-uri-permission')
+    '-t', 'application/pdf', '-d', fixture_uri, '--grant-read-uri-permission')
 wait_for('imagen-movible.pdf')
 tap('Editar')
 tap('Imagen')
@@ -122,6 +130,14 @@ screenshot('04-imagen-seleccionada')
 adb('shell', 'input', 'swipe', str(x), str(y), str(x+60), str(y-45), '700')
 wait_for('Imagen movida', partial=True)
 screenshot('05-imagen-movida')
+# A clean first launch from an external PDF must also display the offer.
+adb('shell', 'pm', 'clear', APP)
+adb('shell', 'am', 'start', '-W', '-n', APP + '/.MainActivity', '-a', 'android.intent.action.VIEW',
+    '-t', 'application/pdf', '-d', fixture_uri, '--grant-read-uri-permission')
+wait_for(QUESTION)
+screenshot('06-oferta-desde-pdf-externo')
+tap('Ahora no')
+wait_for('imagen-movible.pdf')
 (OUT / 'RESULTADO.txt').write_text(
     'OK: oferta al instalar; Ahora no; repetición manual; actualización sin desinstalar '
     'y con borrador conservado; oferta después de actualizar; apertura externa de PDF; '
