@@ -109,6 +109,7 @@ jobs:
           Word y PDF editable de texto reconstruidos: no conservan imágenes ni garantizan la distribución original. OCR local en páginas sin texto: revisar el resultado. Texto original editable por fragmentos. Selección de imágenes independientes compatibles. Revisa el resultado antes de compartir.
           NOTAS
           if gh release view v2.5-beta >/dev/null 2>&1; then
+            gh api --method PATCH "repos/$GH_REPO/git/refs/tags/v2.5-beta" -f sha="$RELEASE_COMMIT" -F force=true >/dev/null
             gh release upload v2.5-beta entrega/* --clobber
             gh release edit v2.5-beta --title 'PDF Fácil Pro 2.5 beta · APK de prueba' --notes-file notas.md --prerelease
           else

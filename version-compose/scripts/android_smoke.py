@@ -233,7 +233,7 @@ tap('Seleccionar varias líneas / tabla')
 l,t,r,b=bounds(wait_for('Seleccionar varias líneas y tablas'))
 adb('shell','input','swipe',str(round(l+(r-l)*0.05)),str(round(t+(b-t)*0.53)),str(round(l+(r-l)*0.92)),str(round(t+(b-t)*0.68)),'900')
 tap('Copiar líneas');wait_for('Varias líneas copiadas',partial=True)
-tap('Copiar tabla');wait_for('Revisar tabla para copiar');screenshot('13-tabla-seleccionada');tap('Copiar tabla');wait_for('Tabla copiada',partial=True)
+tap('Copiar tabla');wait_for('Revisar tabla para copiar');wait_for('Nombre');wait_for('Jose');wait_for('Monto');wait_for('42');screenshot('13-tabla-seleccionada');tap('Copiar tabla');wait_for('Tabla copiada',partial=True)
 tap('Cerrar selección')
 # Export real DOCX and reconstructed PDF through Android's document picker.
 def save_picker():
