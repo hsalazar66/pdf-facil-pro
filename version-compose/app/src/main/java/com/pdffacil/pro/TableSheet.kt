@@ -34,7 +34,11 @@ import java.io.ByteArrayOutputStream
  var error by remember {mutableStateOf("")}
  fun update(cell:TableCell) {cells=cells.mapIndexed {r,values->values.mapIndexed {c,old->if(r==row && c==column) cell else old}}}
  fun shape(r:Int,c:Int) {cells=List(r) {y->List(c) {x->cells.getOrNull(y)?.getOrNull(x) ?: TableCell()}};row=row.coerceAtMost(r-1);column=column.coerceAtMost(c-1)}
- val photo=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) {uri->if(uri!=null) {
+ val photo=rememberLauncherForActivityResult(object:ActivityResultContracts.OpenDocument() {
+  override fun createIntent(context:android.content.Context,input:Array<String>):android.content.Intent=super.createIntent(context,input).apply {
+   putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI,android.net.Uri.parse("content://com.android.externalstorage.documents/document/primary%3APictures"))
+  }
+ }) {uri->if(uri!=null) {
   loading=true;scope.launch {try {
    val cell=withContext(Dispatchers.IO) {
     val decoded=decodePastedImage(context,uri)
@@ -77,7 +81,7 @@ import java.io.ByteArrayOutputStream
    }
    OutlinedTextField(cells[row][column].text,{update(cells[row][column].copy(text=it))},label={Text("Contenido de la celda")},modifier=Modifier.fillMaxWidth(),keyboardOptions=KeyboardOptions(keyboardType=if(numeric) KeyboardType.Decimal else KeyboardType.Text),maxLines=4,enabled=!loading)
    Row {
-    OutlinedButton(onClick={photo.launch("image/*")},enabled=!loading) {Text("Imagen en celda")}
+    OutlinedButton(onClick={photo.launch(arrayOf("image/*"))},enabled=!loading) {Text("Imagen en celda")}
     if(cells[row][column].picture!=null) TextButton(onClick={update(cells[row][column].copy(picture=null,pictureWidth=0,pictureHeight=0))},enabled=!loading) {Text("Quitar imagen")}
    }
    if(loading) LinearProgressIndicator(Modifier.fillMaxWidth())

@@ -68,7 +68,7 @@ except AssertionError:
  root=tree()
  for label in ('Show roots','Mostrar raíces','Open navigation drawer'):
   if find(root,label) is not None:tap(label);break
- for label in ('Images','Imágenes'):
+ for label in ('Recent','Recientes','Images','Imágenes'):
   if find(tree(),label) is not None:tap(label);break
  if find(tree(),'Pictures') is not None:tap('Pictures')
 wait('celda-tabla.png',partial=True)
