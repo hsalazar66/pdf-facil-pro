@@ -245,7 +245,7 @@ def save_picker():
         current=tree()
         n=next((n for n in current.iter('node') if n.attrib.get('resource-id','').endswith(':id/action_menu_save')),None)
         if n is None:
-            n=next((find(current,label) for label in ('SAVE','Save','GUARDAR','Guardar') if find(current,label) is not None),None)
+            n=next((n for n in current.iter('node') if 'documentsui' in n.attrib.get('package','') and n.attrib.get('text') in ('SAVE','Save','GUARDAR','Guardar')),None)
         if n is not None:
             l,t,r,b=bounds(n);adb('shell','input','tap',str((l+r)//2),str((t+b)//2));return
         time.sleep(1)
