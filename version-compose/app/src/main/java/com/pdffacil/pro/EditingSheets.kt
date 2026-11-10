@@ -40,7 +40,7 @@ import kotlin.math.*
 }
 internal data class ImageEditorData(val ordinal:Int,val bitmap:Bitmap)
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable internal fun ImageToolsSheet(data:ImageEditorData,onDismiss:()->Unit,onResize:(Float)->Unit,onRotate:()->Unit,onCrop:(Rect)->Unit) {
+@Composable internal fun ImageToolsSheet(data:ImageEditorData,onDismiss:()->Unit,onResize:()->Unit,onRotate:()->Unit,onCrop:(Rect)->Unit) {
  var mode by remember {mutableStateOf("Tamaño")}
  var factor by remember {mutableFloatStateOf(1f)}
  var area by remember {mutableStateOf(Rect(0f,0f,1f,1f))}
@@ -74,13 +74,8 @@ internal data class ImageEditorData(val ordinal:Int,val bitmap:Bitmap)
     }
    }
    if(mode=="Tamaño") {
-    Text("Tamaño: ${(factor*100).roundToInt()} % · conserva las proporciones")
-    Slider(value=factor,onValueChange={factor=it},valueRange=0.25f..3f)
-    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
-     OutlinedButton(onClick={factor=(factor-0.25f).coerceAtLeast(0.25f)}) {Text("Reducir")}
-     OutlinedButton(onClick={factor=(factor+0.25f).coerceAtMost(3f)}) {Text("Agrandar")}
-    }
-    Button(onClick={onResize(factor)},modifier=Modifier.fillMaxWidth()) {Text("Aplicar tamaño")}
+    Text("Ajusta la imagen directamente en la página con dos dedos o arrastrando su esquina.")
+    Button(onClick=onResize,modifier=Modifier.fillMaxWidth()) {Text("Redimensionar")}
    } else {
     Text("Arrastra sobre la imagen para seleccionar el área que conservarás.",fontSize=12.sp)
     TextButton(onClick={area=Rect(0f,0f,1f,1f)}) {Text("Restablecer recorte")}

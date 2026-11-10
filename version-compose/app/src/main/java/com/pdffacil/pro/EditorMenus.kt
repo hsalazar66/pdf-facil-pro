@@ -50,6 +50,9 @@ internal val MenuMuted=Color(0xFF64766F)
     "Unir PDF" -> { box(2f,3f,9f,13f);box(13f,8f,9f,13f);line(7f,20f,7f,17f);line(7f,20f,11f,20f) }
     "Girar" -> { drawArc(color,25f,280f,false,Offset(4f,4f),Size(16f,16f),style=stroke);path { moveTo(13f,2f);lineTo(18f,3f);lineTo(16f,8f) } }
     "Eliminar" -> { box(6f,7f,12f,14f);line(4f,6f,20f,6f);line(9f,3f,15f,3f);line(10f,10f,10f,17f);line(14f,10f,14f,17f) }
+    "Tabla" -> {box(2f,4f,20f,16f);line(2f,9f,22f,9f);line(2f,14f,22f,14f);line(9f,4f,9f,20f);line(16f,4f,16f,20f)}
+    "Exportar" -> {box(3f,3f,12f,18f);line(10f,12f,22f,12f);line(18f,8f,22f,12f);line(18f,16f,22f,12f)}
+    "Seleccionar" -> {box(3f,3f,18f,18f);line(7f,8f,17f,8f);line(7f,12f,17f,12f);line(7f,16f,13f,16f)}
     "Hoja nueva" -> {box(4f,2f,14f,19f);line(9f,12f,17f,12f);line(13f,8f,13f,16f)}
     "Guardar" -> { box(3f,3f,18f,18f);box(7f,3f,10f,7f);box(7f,14f,10f,7f) }
     "Buscar","Ampliar" -> { drawCircle(color,6.5f,Offset(10f,10f),style=stroke);line(15f,15f,21f,21f);if(name=="Ampliar") {line(7f,10f,13f,10f);line(10f,7f,10f,13f)} }

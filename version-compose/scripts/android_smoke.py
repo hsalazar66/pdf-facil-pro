@@ -138,12 +138,16 @@ adb('shell', 'input', 'keyevent', '4')
 time.sleep(1)
 
 # Real bitmap editing and clipboard actions.
-tap('Editar imagen')
-wait_for('Editar imagen')
-tap('Agrandar')
-tap('Aplicar tamaño')
-wait_for('Tamaño de imagen aplicado', partial=True)
-screenshot('08-imagen-agrandada')
+tap('Redimensionar')
+l,t,r,b=bounds(wait_for('Página 1 del documento'))
+# Original image bottom right, plus the previously committed normalized movement.
+right=150/612+60/(x1-x0)
+bottom=1-150/792-45/(y1-y0)
+hx=round(l+right*(r-l));hy=round(t+bottom*(b-t))
+adb('shell','input','swipe',str(hx),str(hy),str(hx+24),str(hy+24),'900')
+wait_for('Imagen redimensionada',partial=True)
+screenshot('08-imagen-redimensionada-interactiva')
+tap('Terminar')
 tap('Editar imagen')
 tap('Girar 90°')
 wait_for('Imagen girada', partial=True)
@@ -216,6 +220,52 @@ exported=adb('exec-out','cat','/sdcard/Download/imagen-movible-editado.pdf',bina
 assert exported.startswith(b'%PDF-'), 'El archivo exportado no es PDF'
 (OUT/'resultado-editado.pdf').write_bytes(exported)
 screenshot('12-pdf-guardado')
+# Insert an actual vector/text table and select several rows for external clipboard.
+tap('Herramientas');tap('Tabla');wait_for('Insertar tabla')
+for label,value in [('1,1','Nombre'),('1,2','Monto'),('2,1','Jose'),('2,2','42')]:
+    tap(label);adb('shell','input','text',value)
+    adb('shell','input','keyevent','4');time.sleep(0.4)
+tap('Colocar tabla')
+l,t,r,b=bounds(wait_for('Página 2 del documento'))
+adb('shell','input','tap',str(round(l+(r-l)*0.08)),str(round(t+(b-t)*0.55)))
+wait_for('Tabla insertada',partial=True)
+tap('Seleccionar varias líneas / tabla')
+l,t,r,b=bounds(wait_for('Página 2 del documento'))
+adb('shell','input','swipe',str(round(l+(r-l)*0.05)),str(round(t+(b-t)*0.53)),str(round(l+(r-l)*0.92)),str(round(t+(b-t)*0.68)),'900')
+tap('Copiar líneas');wait_for('Varias líneas copiadas',partial=True)
+tap('Copiar tabla');wait_for('Revisar tabla para copiar');screenshot('13-tabla-seleccionada');tap('Copiar tabla');wait_for('Tabla copiada',partial=True)
+tap('Cerrar selección')
+# Export real DOCX and reconstructed PDF through Android's document picker.
+def save_picker():
+    deadline=time.monotonic()+70
+    while time.monotonic()<deadline:
+        current=tree()
+        n=next((n for n in current.iter('node') if n.attrib.get('resource-id','').endswith(':id/action_menu_save')),None)
+        if n is None:
+            n=next((find(current,label) for label in ('SAVE','Save','GUARDAR','Guardar') if find(current,label) is not None),None)
+        if n is not None:
+            l,t,r,b=bounds(n);adb('shell','input','tap',str((l+r)//2),str((t+b)//2));return
+        time.sleep(1)
+    raise AssertionError('No apareció el selector de exportación')
+for option,suffix,result in [('Word editable (.docx)','docx','Word editable guardado'),('PDF editable (texto)','pdf','PDF editable de texto guardado')]:
+    tap('Herramientas');tap('Exportar');tap(option);save_picker();wait_for(result,partial=True)
+    data=adb('exec-out','cat','/sdcard/Download/imagen-movible-editable.'+suffix,binary=True)
+    (OUT/('exportado-editable.'+suffix)).write_bytes(data)
+    assert data.startswith(b'PK' if suffix=='docx' else b'%PDF-')
+screenshot('14-exportacion-editable')
+
+# OCR a genuinely scanned PDF; model must work in this fresh emulator without downloads.
+scan=Path('app/build/verification/escaneo-ocr.pdf');assert scan.is_file()
+adb('shell','run-as',APP,'mkdir','-p','cache/visor_demo')
+subprocess.run(['adb','shell','-T','run-as',APP,'dd','of=cache/visor_demo/escaneo-ocr.pdf','bs=4096'],input=scan.read_bytes(),stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=True)
+adb('shell','am','start','-W','-n',APP+'/.MainActivity','-a','android.intent.action.VIEW','-t','application/pdf','-d','content://'+APP+'.files/visor_demo/escaneo-ocr.pdf')
+wait_for('Confirmar');tap('Continuar');wait_for('escaneo-ocr.pdf')
+for option,suffix,result in [('Word editable (.docx)','docx','Word editable guardado'),('PDF editable (texto)','pdf','PDF editable de texto guardado')]:
+    tap('Herramientas');tap('Exportar');tap(option);save_picker();wait_for(result,partial=True)
+    data=adb('exec-out','cat','/sdcard/Download/escaneo-ocr-editable.'+suffix,binary=True)
+    (OUT/('ocr-editable.'+suffix)).write_bytes(data)
+screenshot('15-ocr-local-exportado')
+
 # A clean first launch from an external PDF must also display the offer.
 adb('shell', 'pm', 'clear', APP)
 fixture_uri = stage_fixture()
@@ -228,7 +278,7 @@ wait_for('imagen-movible.pdf')
 (OUT / 'RESULTADO.txt').write_text(
     'OK: oferta al instalar; Ahora no; repetición manual; actualización sin desinstalar '
     'y con borrador conservado; oferta después de actualizar; apertura externa de PDF; '
-    'selección, arrastre, tamaño, giro, recorte y portapapeles de imagen; hoja nueva, copiar/cortar/pegar texto; menú de compartir y guardado de PDF real. Android API 29 emulado. '
+    'selección, arrastre, tamaño interactivo con los dedos, giro, recorte y portapapeles de imagen; hoja nueva, copiar/cortar/pegar texto; menú de compartir y guardado de PDF real; insertar tabla, copiar varias líneas y tabla; exportar DOCX y PDF de texto. Android API 29 emulado. '
     'La elección Siempre y el comportamiento de cada fabricante requieren prueba en teléfono.\n'
 )
 print('VERIFICACION ANDROID COMPLETADA')

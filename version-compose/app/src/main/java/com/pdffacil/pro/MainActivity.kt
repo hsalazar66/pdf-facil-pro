@@ -26,6 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -100,6 +101,14 @@ class MainActivity : ComponentActivity() {
  var shareMenu by remember {mutableStateOf(false)}
  var newPageDialog by remember {mutableStateOf(false)}
  var imageEditor by remember {mutableStateOf<ImageEditorData?>(null)}
+ var resizing by remember {mutableStateOf(false)}
+ var selectionPage by remember {mutableStateOf<TextPage?>(null)}
+ var selectionIndices by remember {mutableStateOf(emptySet<Int>())}
+ var tableDialog by remember {mutableStateOf(false)}
+ var copiedTable by remember {mutableStateOf<List<List<String>>?>(null)}
+ var tableToPlace by remember {mutableStateOf<List<List<String>>?>(null)}
+ var exportDialog by remember {mutableStateOf(false)}
+ var pendingExport by remember {mutableStateOf<File?>(null)}
  var pasteContent by remember {mutableStateOf<PasteContent?>(null)}
  fun task(block: suspend () -> Unit) {
   if(busy) return
@@ -108,7 +117,7 @@ class MainActivity : ComponentActivity() {
  }
  suspend fun refresh(file: File, at: Int=page) {
   val p=withContext(Dispatchers.IO) { preview(file,at) }
-  view=p;page=at;zoom=1f;pan=Offset.Zero;selected=null;selectedImage=null;draggingImage=null;imageDelta=Offset.Zero;stroke=emptyList()
+  resizing=false;selectionPage=null;selectionIndices=emptySet();tableToPlace=null;view=p;page=at;zoom=1f;pan=Offset.Zero;selected=null;selectedImage=null;draggingImage=null;imageDelta=Offset.Zero;stroke=emptyList()
  }
  suspend fun establish(source: File, name: String, existingDraft: File?=null) {
   val pair=withContext(Dispatchers.IO) {
@@ -188,6 +197,7 @@ class MainActivity : ComponentActivity() {
  }
  fun beginPaste() {
   try {
+   selectionPage=null;resizing=false;tableToPlace=null
    val payload=readPasteContent(context) ?: error("Copia primero texto o una imagen.")
    pasteContent=payload;tab="Editar";addingText=false;movingImages=false;selectedImage=null
    status="Toca la página donde quieres pegar ${if(payload is PasteContent.Text) "el texto" else "la imagen"}."
@@ -217,10 +227,42 @@ class MainActivity : ComponentActivity() {
   val which=selectedImage ?: return
   task {val bitmap=withContext(Dispatchers.IO) {PDDocument.load(current!!).use {selectedImageBitmap(it,page,which)}};imageEditor=ImageEditorData(which,bitmap)}
  }
+ val saveWord=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.wordprocessingml.document")) {uri ->
+  val file=pendingExport;pendingExport=null
+  if(uri!=null && file!=null) task {try {withContext(Dispatchers.IO) {context.contentResolver.openOutputStream(uri,"wt")!!.use {out->file.inputStream().use {it.copyTo(out)}}};status="Word editable guardado. Revisa el formato y el texto reconocido."} finally {file.delete()}} else file?.delete()
+ }
+ val saveEditable=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) {uri ->
+  val file=pendingExport;pendingExport=null
+  if(uri!=null && file!=null) task {try {withContext(Dispatchers.IO) {context.contentResolver.openOutputStream(uri,"wt")!!.use {out->file.inputStream().use {it.copyTo(out)}}};status="PDF editable de texto guardado. Revisa el resultado."} finally {file.delete()}} else file?.delete()
+ }
+ fun exportEditable(word:Boolean)=task {
+  val source=current ?: return@task
+  val pages=withContext(Dispatchers.IO) {exportPages(source) {n,total->scope.launch {status="Preparando texto y OCR: página $n de $total"}}}
+  require(pages.any {it.cells.any {c->c.text.isNotBlank()}}) {"No se reconoció texto. Prueba con un documento más nítido."}
+  val output=withContext(Dispatchers.IO) {File.createTempFile("exportar-",if(word) ".docx" else ".pdf",work).also {if(word) writeDocx(pages,it) else writeEditablePdf(context,pages,it)}}
+  pendingExport=output
+  val name=title.removeSuffix(".pdf")+"-editable"
+  if(word) saveWord.launch(name+".docx") else saveEditable.launch(name+".pdf")
+ }
+ fun beginSelection()=task {
+  val source=current ?: return@task
+  val extracted=withContext(Dispatchers.IO) {PDDocument.load(source).use {extractTextPage(it,page)}}
+  require(extracted.cells.any {it.text.isNotBlank()}) {"Esta página no tiene texto seleccionable. Exporta a PDF editable para aplicar OCR."}
+  tab="Editar";resizing=false;movingImages=false;addingText=false;pasteContent=null;selectionIndices=emptySet();selectionPage=extracted
+  status="Arrastra sobre varias líneas. Puedes sumar otras áreas a la selección."
+ }
+ fun copyMany(asTable:Boolean) {
+  val source=selectionPage ?: return
+  val cells=source.cells.filterIndexed {index,_->index in selectionIndices}
+  if(cells.isEmpty()) {status="Arrastra sobre el texto que quieres copiar.";return}
+  val rows=layoutRows(cells)
+  if(asTable) copiedTable=tableData(rows)
+  else {putTextClipboard(context,rows.joinToString("\n") {it.cells.joinToString(" ") {c->c.text}});status="Varias líneas copiadas. Puedes pegarlas en Word, Excel u otro PDF."}
+ }
  fun askBeforeLeaving(action:()->Unit) {
   if(!exported) { confirmMessage="Los cambios están guardados como borrador en Recientes. Puedes exportar una copia PDF antes de cambiar de documento.";confirm=action } else action()
  }
- fun home() { imageEditor=null;shareMenu=false;newPageDialog=false;pasteContent=null;current=null;view=null;selected=null;recent=docs.listFiles()?.filter { it.extension=="pdf" }?.sortedByDescending { it.lastModified() } ?: emptyList();status="Tus documentos, siempre contigo" }
+ fun home() { resizing=false;selectionPage=null;selectionIndices=emptySet();tableDialog=false;copiedTable=null;tableToPlace=null;exportDialog=false; imageEditor=null;shareMenu=false;newPageDialog=false;pasteContent=null;current=null;view=null;selected=null;recent=docs.listFiles()?.filter { it.extension=="pdf" }?.sortedByDescending { it.lastModified() } ?: emptyList();status="Tus documentos, siempre contigo" }
  BackHandler(enabled=current!=null && !busy) { askBeforeLeaving { home() } }
  LaunchedEffect(incoming,busy) {
   if(busy) return@LaunchedEffect
@@ -230,7 +272,7 @@ class MainActivity : ComponentActivity() {
    consumeIncoming()
   }
  }
- DefaultViewerPrompt(enabled=!busy && selected==null && !pagesDialog && !search && confirm==null && imageEditor==null && !shareMenu && !newPageDialog,manualRequest=defaultRequest) { detectedViewer=it }
+ DefaultViewerPrompt(enabled=!busy && selected==null && !pagesDialog && !search && confirm==null && imageEditor==null && !shareMenu && !newPageDialog && !tableDialog && copiedTable==null && !exportDialog,manualRequest=defaultRequest) { detectedViewer=it }
  Scaffold { padding -> Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(padding).padding(horizontal=12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
   Row(Modifier.fillMaxWidth().padding(top=6.dp),verticalAlignment=Alignment.CenterVertically) {
    if(current!=null) MenuIconButton("Anterior",enabled=!busy) { askBeforeLeaving { home() } }
@@ -270,7 +312,7 @@ class MainActivity : ComponentActivity() {
     }
    },enabled=!busy,modifier=Modifier.fillMaxWidth()) { Text("Probar edición con un PDF de ejemplo") }
    OutlinedTextField(query,{query=it},label={Text("Buscar documentos recientes")},singleLine=true,modifier=Modifier.fillMaxWidth())
-   Text("Edición real de texto · Versión 2.4 beta",fontSize=12.sp,color=MaterialTheme.colorScheme.primary)
+   Text("Edición real de texto · Versión 2.5 beta",fontSize=12.sp,color=MaterialTheme.colorScheme.primary)
    Text("Recientes",style=MaterialTheme.typography.titleMedium)
    LazyColumn(Modifier.weight(1f)) {
     items(recent.filter { it.name.contains(query,true) }) { f ->
@@ -287,21 +329,29 @@ class MainActivity : ComponentActivity() {
     TextButton(onClick={ about=true }) { Text("Información") }
    }
   } else {
-   ModeMenu(active=tab,enabled=!busy) { mode -> tab=mode;pasteContent=null;addingText=false;movingImages=false;selectedImage=null;stroke=emptyList() }
+   ModeMenu(active=tab,enabled=!busy) { mode -> tab=mode;resizing=false;selectionPage=null;selectionIndices=emptySet();tableToPlace=null;pasteContent=null;addingText=false;movingImages=false;selectedImage=null;stroke=emptyList() }
    if(tab=="Editar") {
     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-     MenuAction("Modificar",Modifier.weight(1f),selected=!addingText && !movingImages,enabled=!busy) { pasteContent=null;addingText=false;movingImages=false;selectedImage=null }
-     MenuAction("Texto nuevo",Modifier.weight(1f),selected=addingText,enabled=!busy) { pasteContent=null;addingText=true;movingImages=false;selectedImage=null }
-     MenuAction("Imagen",Modifier.weight(1f),selected=movingImages,enabled=!busy) { pasteContent=null;movingImages=true;addingText=false }
+     MenuAction("Modificar",Modifier.weight(1f),selected=!addingText && !movingImages,enabled=!busy) { pasteContent=null;resizing=false;selectionPage=null;tableToPlace=null;addingText=false;movingImages=false;selectedImage=null }
+     MenuAction("Texto nuevo",Modifier.weight(1f),selected=addingText,enabled=!busy) { pasteContent=null;resizing=false;selectionPage=null;tableToPlace=null;addingText=true;movingImages=false;selectedImage=null }
+     MenuAction("Imagen",Modifier.weight(1f),selected=movingImages,enabled=!busy) { pasteContent=null;resizing=false;selectionPage=null;tableToPlace=null;movingImages=true;addingText=false }
     }
     if(movingImages) Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
      TextButton(onClick={image.launch("image/*")},enabled=!busy) { Text("＋ Añadir imagen") }
      Text(if(selectedImage==null) "Toca una imagen" else "Imagen ${selectedImage!!+1} seleccionada",fontSize=12.sp,color=MenuMuted)
     }
+    if(!movingImages && selectionPage==null) TextButton(onClick={beginSelection()},enabled=!busy) {Text("Seleccionar varias líneas / tabla")}
+    if(selectionPage!=null) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+     TextButton(onClick={copyMany(false)},enabled=!busy && selectionIndices.isNotEmpty()) {Text("Copiar líneas")}
+     TextButton(onClick={copyMany(true)},enabled=!busy && selectionIndices.isNotEmpty()) {Text("Copiar tabla")}
+     TextButton(onClick={selectionIndices=emptySet()}) {Text("Limpiar")}
+     TextButton(onClick={selectionPage=null;selectionIndices=emptySet()}) {Text("Cerrar selección")}
+    }
     if(movingImages) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(4.dp)) {
-     TextButton(onClick={copySelectedImage(false)},enabled=!busy && selectedImage!=null) {Text("Copiar")}
-     TextButton(onClick={copySelectedImage(true)},enabled=!busy && selectedImage!=null) {Text("Cortar")}
-     TextButton(onClick={openImageTools()},enabled=!busy && selectedImage!=null) {Text("Editar imagen")}
+     TextButton(onClick={copySelectedImage(false)},enabled=!busy && selectedImage!=null,contentPadding=PaddingValues(horizontal=6.dp)) {Text("Copiar")}
+     TextButton(onClick={copySelectedImage(true)},enabled=!busy && selectedImage!=null,contentPadding=PaddingValues(horizontal=6.dp)) {Text("Cortar")}
+     TextButton(onClick={resizing=!resizing;status=if(resizing) "Arrastra una esquina o usa dos dedos. El tamaño se guarda al soltar." else "Tamaño confirmado"},enabled=!busy && selectedImage!=null,contentPadding=PaddingValues(horizontal=6.dp)) {Text(if(resizing) "Terminar" else "Redimensionar")}
+     TextButton(onClick={openImageTools()},enabled=!busy && selectedImage!=null,contentPadding=PaddingValues(horizontal=6.dp)) {Text("Editar imagen")}
     }
     if(movingImages && view?.images?.isEmpty()==true) Text("No se detectan imágenes independientes. Puedes añadir una con el botón de arriba.",fontSize=12.sp,color=MenuMuted)
     if(!movingImages && !addingText && view?.fragments?.isEmpty()==true) Text("No hay texto seleccionable. Añade texto nuevo o pega contenido.",fontSize=12.sp,color=MenuMuted)
@@ -311,6 +361,11 @@ class MainActivity : ComponentActivity() {
     MenuAction("Firma",Modifier.weight(1f),selected=annotation=="Firma",enabled=!busy) { annotation="Firma" }
    }
    if(tab=="Herramientas") {
+    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+     MenuAction("Tabla",Modifier.weight(1f),enabled=!busy) {tableDialog=true}
+     MenuAction("Exportar",Modifier.weight(1f),enabled=!busy) {exportDialog=true}
+     MenuAction("Seleccionar",Modifier.weight(1f),enabled=!busy) {beginSelection()}
+    }
     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
      MenuAction("Hoja nueva",Modifier.weight(1f),enabled=!busy) {newPageDialog=true}
      MenuAction("Unir PDF",Modifier.weight(1f),enabled=!busy) {merge.launch(arrayOf("application/pdf"))}
@@ -327,30 +382,33 @@ class MainActivity : ComponentActivity() {
    }
    if(tab!="Ver") Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
     Text(when(tab) {
-     "Editar" -> if(pasteContent!=null) "Toca donde quieres pegar." else if(movingImages) "Arrastra el marco y suelta para mover la imagen." else if(addingText) "Toca donde quieres escribir." else "Toca una frase para modificarla."
+     "Editar" -> if(tableToPlace!=null) "Toca para colocar la tabla." else if(selectionPage!=null) "Arrastra para seleccionar líneas." else if(resizing) "Usa una esquina o dos dedos." else if(pasteContent!=null) "Toca donde quieres pegar." else if(movingImages) "Arrastra el marco y suelta para mover la imagen." else if(addingText) "Toca donde quieres escribir." else "Toca una frase para modificarla."
      "Anotar" -> if(annotation=="Firma") "Dibuja tu firma con el dedo." else "Arrastra sobre lo que quieres resaltar."
      else -> "Organiza tu documento."
     },fontSize=12.sp,color=MenuMuted,modifier=Modifier.weight(1f),maxLines=2)
-    if(tab=="Editar") TextButton(onClick={if(pasteContent==null) beginPaste() else pasteContent=null},enabled=!busy) {Text(if(pasteContent==null) "Pegar" else "Cancelar")}
+    if(tab=="Editar") TextButton(onClick={if(pasteContent==null) {selectionPage=null;resizing=false;tableToPlace=null;beginPaste()} else pasteContent=null},enabled=!busy) {Text(if(pasteContent==null) "Pegar" else "Cancelar")}
     MenuIconButton("Deshacer",enabled=!busy && revision>0) { restore(revision-1) }
     MenuIconButton("Rehacer",enabled=!busy && revision<history.lastIndex) { restore(revision+1) }
    }
    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(18.dp)).clipToBounds().background(Color(0xFFE7EEEA)).pointerInput(tab,busy,movingImages) {
-    if(!busy && tab!="Anotar" && !(tab=="Editar" && movingImages)) detectTransformGestures { _, delta, scale, _ -> zoom=(zoom*scale).coerceIn(1f,4f);pan=if(zoom>1f) pan+delta else Offset.Zero }
+    if(!busy && tab!="Anotar" && !(tab=="Editar" && (movingImages || selectionPage!=null || tableToPlace!=null))) detectTransformGestures { _, delta, scale, _ -> zoom=(zoom*scale).coerceIn(1f,4f);pan=if(zoom>1f) pan+delta else Offset.Zero }
    },contentAlignment=Alignment.Center) {
     view?.let { p ->
      val ratio=p.bitmap.width.toFloat()/p.bitmap.height
      val fittedWidth=minOf(maxWidth-16.dp,(maxHeight-16.dp)*ratio).coerceAtLeast(1.dp)
      Box(Modifier.size(fittedWidth,fittedWidth/ratio).shadow(3.dp,RoundedCornerShape(2.dp)).graphicsLayer(scaleX=zoom,scaleY=zoom,translationX=pan.x,translationY=pan.y)
       .onSizeChanged { pageW=it.width;pageH=it.height }
-      .pointerInput(p,tab,addingText,movingImages,pasteContent,busy) {
-       if(!busy && tab=="Editar") detectTapGestures { point ->
+      .pointerInput(p,tab,addingText,movingImages,pasteContent,busy,selectionPage,resizing,tableToPlace) {
+       if(!busy && tab=="Editar" && selectionPage==null && !resizing) detectTapGestures { point ->
         val norm=Offset(point.x/pageW,point.y/pageH)
         val pasted=pasteContent
-        if(pasted!=null) {
+        if(tableToPlace!=null) {
+         val data=tableToPlace!!;tableToPlace=null
+         change("Tabla insertada") {doc->insertTable(context,doc,page,norm,data)}
+        } else if(pasted!=null) {
          pasteContent=null
          when(pasted) {
-          is PasteContent.Text -> change("Texto pegado") {doc -> addNewText(context,doc,page,norm,pasted.value.replace('\n',' ').replace('\r',' '))}
+          is PasteContent.Text -> change("Texto pegado") {doc -> addMultilineText(context,doc,page,norm,pasted.value)}
           is PasteContent.Image -> {
            movingImages=true
            change("Imagen pegada",selectImageAfter=Int.MAX_VALUE) {doc ->val bitmap=decodePastedImage(context,pasted.uri);try {addImage(doc,page,bitmap,norm)} finally {bitmap.recycle()}}
@@ -364,8 +422,8 @@ class MainActivity : ComponentActivity() {
          selected=hit;if(hit==null) status="Toca dentro de un fragmento con borde verde."
         }
        }
-      }.pointerInput(p,tab,movingImages,busy) {
-       if(!busy && tab=="Editar" && movingImages) detectDragGestures(
+      }.pointerInput(p,tab,movingImages,busy,resizing) {
+       if(!busy && tab=="Editar" && movingImages && !resizing) detectDragGestures(
         onDragStart={point ->
          val norm=Offset(point.x/pageW,point.y/pageH)
          val hit=p.images.filter { it.rect.contains(norm) }.minByOrNull { it.rect.width*it.rect.height }
@@ -398,6 +456,15 @@ class MainActivity : ComponentActivity() {
         val a=points.first();val b=points.last();drawRect(Color(0x66FFD200),Offset(minOf(a.x,b.x),minOf(a.y,b.y)),Size(kotlin.math.abs(a.x-b.x),kotlin.math.abs(a.y-b.y)))
        } else points.zipWithNext().forEach { (a,b) -> drawLine(Color(0xFF0D3359),a,b,2f) }
       }
+      if(tab=="Editar" && !busy) selectionPage?.let {textPage->TextSelectionLayer(textPage,selectionIndices) {selectionIndices=it}}
+      if(tab=="Editar" && resizing && !busy) p.images.firstOrNull {it.ordinal==selectedImage}?.let {fragment->
+       InteractiveImage(current!!,page,fragment,onCommit={factor,delta->
+        task {
+         applyChange("Imagen redimensionada",selectImageAfter=fragment.ordinal) {doc->resizeImage(doc,page,fragment.ordinal,factor);moveImage(doc,page,fragment.ordinal,delta)}
+         resizing=true
+        }
+       },onError={status=it})
+      }
      }
     }
    }
@@ -426,6 +493,12 @@ class MainActivity : ComponentActivity() {
    }
   })
  }
+ if(exportDialog) ExportDialog(onDismiss={exportDialog=false}) {word->exportDialog=false;exportEditable(word)}
+ if(tableDialog) TableEditor(onDismiss={tableDialog=false},onConfirm={data->tableDialog=false;tableToPlace=data;tab="Editar";movingImages=false;resizing=false;selectionPage=null;pasteContent=null;addingText=false;status="Toca la página para colocar la tabla."})
+ copiedTable?.let {data->TableEditor(initial=data,copyOnly=true,onDismiss={copiedTable=null},onConfirm={rows->
+  val clipboard=context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+  clipboard.setPrimaryClip(android.content.ClipData.newHtmlText("Tabla PDF",tsv(rows),tableHtml(rows)));copiedTable=null;status="Tabla copiada. Pégala en Excel o Word."
+ })}
  if(shareMenu) ShareDocumentSheet(onDismiss={shareMenu=false}) {destination ->
   shareMenu=false
   if(destination==PdfDestination.DEVICE) save.launch(title.removeSuffix(".pdf")+"-editado.pdf") else shareDocument(destination)
@@ -436,7 +509,7 @@ class MainActivity : ComponentActivity() {
   tab="Editar";movingImages=false;addingText=true;pasteContent=null
   change("Hoja nueva añadida",pageAfter=at) {doc -> insertBlankPage(doc,page,position,size)}
  }
- imageEditor?.let {data -> ImageToolsSheet(data,onDismiss={imageEditor=null},onResize={factor ->imageEditor=null;change("Tamaño de imagen aplicado",selectImageAfter=data.ordinal) {doc ->resizeImage(doc,page,data.ordinal,factor)}},onRotate={imageEditor=null;change("Imagen girada",selectImageAfter=data.ordinal) {doc ->rotateImage(doc,page,data.ordinal)}},onCrop={area ->imageEditor=null;change("Imagen recortada",selectImageAfter=data.ordinal) {doc ->cropImage(doc,page,data.ordinal,area)}}) }
+ imageEditor?.let {data -> ImageToolsSheet(data,onDismiss={imageEditor=null},onResize={imageEditor=null;resizing=true;selectedImage=data.ordinal;status="Arrastra una esquina o usa dos dedos; se guarda al soltar."},onRotate={imageEditor=null;change("Imagen girada",selectImageAfter=data.ordinal) {doc ->rotateImage(doc,page,data.ordinal)}},onCrop={area ->imageEditor=null;change("Imagen recortada",selectImageAfter=data.ordinal) {doc ->cropImage(doc,page,data.ordinal,area)}}) }
  if(addTextAt!=null) AlertDialog(onDismissRequest={addTextAt=null},title={Text("Añadir texto nuevo")},text={OutlinedTextField(newValue,{newValue=it.replace('\n',' ')},label={Text("Texto nuevo")},singleLine=true)},confirmButton={TextButton(onClick={val point=addTextAt!!;addTextAt=null;change("Texto nuevo añadido") { doc -> addNewText(context,doc,page,point,newValue) }},enabled=newValue.isNotBlank()) { Text("Añadir") }},dismissButton={TextButton(onClick={addTextAt=null}) { Text("Cancelar") }})
  if(confirm!=null) AlertDialog(onDismissRequest={confirm=null},title={Text("Confirmar")},text={Text(confirmMessage)},confirmButton={TextButton(onClick={val action=confirm;confirm=null;action?.invoke()}) { Text("Continuar") }},dismissButton={TextButton(onClick={confirm=null}) { Text("Volver") }})
  if(pagesDialog) AlertDialog(onDismissRequest={pagesDialog=false},title={Text("Ir a página")},text={LazyColumn { items((1..(view?.count ?: 0)).toList()) { n -> TextButton(onClick={pagesDialog=false;task { current?.let { refresh(it,n-1) } }}) { Text("Página $n") } } }},confirmButton={TextButton(onClick={pagesDialog=false}) { Text("Cerrar") }})
@@ -444,8 +517,8 @@ class MainActivity : ComponentActivity() {
   var term by remember { mutableStateOf("") }
   AlertDialog(onDismissRequest={search=false},title={Text("Buscar en esta página")},text={Column { OutlinedTextField(term,{term=it},label={Text("Texto a buscar")});view?.fragments?.filter { term.isNotBlank() && it.text.contains(term,true) }?.forEach { f -> TextButton(onClick={search=false;tab="Editar";selected=f}) { Text(f.text,maxLines=2) } } }},confirmButton={TextButton(onClick={search=false}) { Text("Cerrar") }})
  }
- if(about) AlertDialog(onDismissRequest={about=false},title={Text("PDF Fácil Pro 2.4 beta")},text={Column(Modifier.verticalScroll(rememberScrollState())) {
-  Text("Editor gratuito, local y sin anuncios. La edición sustituye fragmentos de texto dentro del PDF. No incluye OCR ni redistribución automática de párrafos.\n\nMotor basado en PDF Inspector, de Shardul Vikram Singh (MIT), y PDFBox Android (Apache 2.0). Fuentes Liberation con sus licencias. Avisos incluidos en la aplicación.")
+ if(about) AlertDialog(onDismissRequest={about=false},title={Text("PDF Fácil Pro 2.5 beta")},text={Column(Modifier.verticalScroll(rememberScrollState())) {
+  Text("Editor gratuito, local y sin anuncios. La edición sustituye fragmentos de texto dentro del PDF. Incluye OCR latino local para exportar a Word y PDF de texto. La conversión puede cambiar el formato y requiere revisión.\n\nMotor basado en PDF Inspector, de Shardul Vikram Singh (MIT), y PDFBox Android (Apache 2.0). Fuentes Liberation con sus licencias. Avisos incluidos en la aplicación.")
   Text(context.assets.open("LICENCIA-PDF-INSPECTOR-MIT.txt").bufferedReader().use { it.readText() },fontSize=10.sp)
  }},confirmButton={TextButton(onClick={about=false}) { Text("Cerrar") }})
 }

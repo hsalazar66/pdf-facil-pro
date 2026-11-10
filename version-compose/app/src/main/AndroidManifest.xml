@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+ <uses-permission android:name="android.permission.INTERNET" tools:node="remove"/>
  <queries><intent><action android:name="android.intent.action.VIEW"/><data android:mimeType="application/pdf" android:scheme="content"/></intent><intent><action android:name="android.intent.action.SEND"/><data android:mimeType="application/pdf"/></intent>
  <intent><action android:name="android.intent.action.SENDTO"/><data android:scheme="mailto"/></intent>
  <package android:name="com.whatsapp"/><package android:name="com.whatsapp.w4b"/><package android:name="com.google.android.apps.docs"/></queries>
