@@ -105,6 +105,7 @@ internal fun addImage(doc: PDDocument, pageIndex: Int, bitmap: Bitmap, point:Off
 /** Translate one image occurrence, preserving shared resources and other occurrences. */
 internal fun moveImage(doc:PDDocument, pageIndex:Int, ordinal:Int, delta:Offset) {
  require(delta.x.isFinite() && delta.y.isFinite()) { "Movimiento no válido" }
+ if(delta.getDistance()<0.000001f) return
  val page=doc.getPage(pageIndex)
  val parsed=ContentStreamEngine.parse(page)
  val images=parsed.leaves.filter { it.kind==NodeKind.IMAGE && it.label=="Image" && it.bounds!=null }

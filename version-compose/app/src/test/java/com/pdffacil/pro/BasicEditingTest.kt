@@ -33,6 +33,7 @@ class BasicEditingTest {
  @Test fun enlargeAndReducePreserveCenterAndOtherOccurrence() {
   PDDocument.load(fixture()).use {doc ->
    resizeImage(doc,0,0,2f)
+   moveImage(doc,0,0,Offset.Zero)
    reopened(doc) {copy ->
     val images=imageNodes(copy.getPage(0));val b=images[0].bounds!!
     assertEquals(200f,b.width,0.05f);assertEquals(160f,b.height,0.05f)
