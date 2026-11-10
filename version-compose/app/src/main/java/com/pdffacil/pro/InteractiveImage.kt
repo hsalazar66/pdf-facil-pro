@@ -43,7 +43,7 @@ import kotlin.math.*
   }
  }
  // Don't recycle the last frame during composition; Android releases it after this overlay disappears.
- Box(Modifier.fillMaxSize().semantics {contentDescription="Redimensionar imagen con los dedos"}.pointerInput(source,fragment.ordinal) {
+ BoxWithConstraints(Modifier.fillMaxSize().semantics {contentDescription="Redimensionar imagen con los dedos"}.pointerInput(source,fragment.ordinal) {
   awaitEachGesture {
    val down=awaitFirstDown(requireUnconsumed=false)
    val width=size.width.toFloat();val height=size.height.toFloat()
@@ -77,6 +77,10 @@ import kotlin.math.*
    drawRect(MenuGreen,Offset(r.left*size.width,r.top*size.height),Size(r.width*size.width,r.height*size.height),style=Stroke(2.dp.toPx()))
    listOf(r.topLeft,r.topRight,r.bottomLeft,r.bottomRight).forEach {drawCircle(MenuGreen,7.dp.toPx(),Offset(it.x*size.width,it.y*size.height))}
   }
+  val bounds=fragment.rect
+  val center=bounds.center+delta
+  val right=center.x+bounds.width*factor/2;val bottom=center.y+bounds.height*factor/2
+  Box(Modifier.offset(x=maxWidth*right-12.dp,y=maxHeight*bottom-12.dp).size(24.dp).semantics {contentDescription="Esquina inferior derecha de imagen"})
   Text("${(factor*100).roundToInt()} %",color=MenuGreen)
  }
 }

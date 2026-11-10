@@ -139,11 +139,8 @@ time.sleep(1)
 
 # Real bitmap editing and clipboard actions.
 tap('Redimensionar')
-l,t,r,b=bounds(wait_for('Redimensionar imagen con los dedos'))
-# Original image bottom right, plus the previously committed normalized movement.
-right=150/612+60/(x1-x0)
-bottom=1-150/792-45/(y1-y0)
-hx=round(l+right*(r-l));hy=round(t+bottom*(b-t))
+l,t,r,b=bounds(wait_for('Esquina inferior derecha de imagen'))
+hx=(l+r)//2;hy=(t+b)//2
 adb('shell','input','swipe',str(hx),str(hy),str(hx+24),str(hy+24),'900')
 wait_for('Imagen redimensionada',partial=True)
 screenshot('08-imagen-redimensionada-interactiva')
