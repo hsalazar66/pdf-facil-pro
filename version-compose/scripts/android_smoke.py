@@ -127,6 +127,95 @@ screenshot('04-imagen-seleccionada')
 adb('shell', 'input', 'swipe', str(x), str(y), str(x+60), str(y-45), '700')
 wait_for('Imagen movida', partial=True)
 screenshot('05-imagen-movida')
+
+# The sharing menu must expose each destination without sending anything.
+tap('Compartir')
+wait_for('Compartir y guardar')
+for destination in ('WhatsApp', 'Google Drive', 'Correo electrónico', 'Guardar en el celular'):
+    wait_for(destination)
+screenshot('07-compartir-y-guardar')
+adb('shell', 'input', 'keyevent', '4')
+time.sleep(1)
+
+# Real bitmap editing and clipboard actions.
+tap('Editar imagen')
+wait_for('Editar imagen')
+tap('Agrandar')
+tap('Aplicar tamaño')
+wait_for('Tamaño de imagen aplicado', partial=True)
+screenshot('08-imagen-agrandada')
+tap('Editar imagen')
+tap('Girar 90°')
+wait_for('Imagen girada', partial=True)
+tap('Editar imagen')
+tap('Recortar')
+preview = wait_for('Previsualización de imagen')
+l, t, r, b = bounds(preview)
+adb('shell', 'input', 'swipe', str(round(l+(r-l)*0.05)), str(round(t+(b-t)*0.05)),
+    str(round(l+(r-l)*0.45)), str(round(t+(b-t)*0.95)), '700')
+tap('Aplicar recorte')
+wait_for('Imagen recortada', partial=True)
+screenshot('09-imagen-recortada')
+tap('Copiar')
+wait_for('Imagen copiada', partial=True)
+tap('Cortar')
+wait_for('Imagen cortada', partial=True)
+tap('Pegar')
+l, t, r, b = bounds(wait_for('Página 1 del documento'))
+adb('shell', 'input', 'tap', str(round(l+(r-l)*0.1)), str(round(t+(b-t)*0.2)))
+wait_for('Imagen pegada', partial=True)
+screenshot('10-imagen-pegada')
+
+# Add a blank page, write real text, cut it, and paste at a new position.
+tap('Herramientas')
+tap('Hoja nueva')
+wait_for('Añadir hoja nueva')
+tap('Añadir hoja')
+wait_for('Página 2 de 2', partial=True)
+l, t, r, b = bounds(wait_for('Página 2 del documento'))
+adb('shell', 'input', 'tap', str(round(l+(r-l)*0.12)), str(round(t+(b-t)*0.18)))
+wait_for('Añadir texto nuevo')
+tap('Texto nuevo')
+adb('shell', 'input', 'text', 'TextoClipboard')
+tap('Añadir')
+wait_for('Texto nuevo añadido', partial=True)
+tap('Modificar')
+def select_test_text():
+    l, t, r, b = bounds(wait_for('Página 2 del documento'))
+    adb('shell', 'input', 'tap', str(round(l+(r-l)*0.2)), str(round(t+(b-t)*0.173)))
+    wait_for('Editar texto original')
+select_test_text()
+tap('Copiar')
+wait_for('Texto copiado', partial=True)
+select_test_text()
+tap('Cortar')
+wait_for('Texto cortado', partial=True)
+tap('Pegar')
+l, t, r, b = bounds(wait_for('Página 2 del documento'))
+adb('shell', 'input', 'tap', str(round(l+(r-l)*0.15)), str(round(t+(b-t)*0.30)))
+wait_for('Texto pegado', partial=True)
+screenshot('11-hoja-nueva-texto-pegado')
+
+# Exercise Android's real CreateDocument flow and retrieve the exported PDF.
+tap('Compartir')
+tap('Guardar en el celular')
+deadline=time.monotonic()+55
+saved=False
+while time.monotonic()<deadline:
+    current=tree()
+    node=next((n for n in current.iter('node') if n.attrib.get('resource-id','').endswith(':id/action_menu_save')),None)
+    if node is None:
+        node=next((find(current,name) for name in ('GUARDAR','Guardar','SAVE','Save') if find(current,name) is not None),None)
+    if node is not None:
+        l,t,r,b=bounds(node)
+        adb('shell','input','tap',str((l+r)//2),str((t+b)//2));saved=True;break
+    time.sleep(1)
+assert saved, 'No se encontró Guardar en el selector de archivos'
+wait_for('Cambios guardados')
+exported=adb('exec-out','cat','/sdcard/Download/imagen-movible-editado.pdf',binary=True)
+assert exported.startswith(b'%PDF-'), 'El archivo exportado no es PDF'
+(OUT/'resultado-editado.pdf').write_bytes(exported)
+screenshot('12-pdf-guardado')
 # A clean first launch from an external PDF must also display the offer.
 adb('shell', 'pm', 'clear', APP)
 fixture_uri = stage_fixture()
@@ -139,7 +228,7 @@ wait_for('imagen-movible.pdf')
 (OUT / 'RESULTADO.txt').write_text(
     'OK: oferta al instalar; Ahora no; repetición manual; actualización sin desinstalar '
     'y con borrador conservado; oferta después de actualizar; apertura externa de PDF; '
-    'selección y arrastre de una imagen existente. Android API 29 emulado. '
+    'selección, arrastre, tamaño, giro, recorte y portapapeles de imagen; hoja nueva, copiar/cortar/pegar texto; menú de compartir y guardado de PDF real. Android API 29 emulado. '
     'La elección Siempre y el comportamiento de cada fabricante requieren prueba en teléfono.\n'
 )
 print('VERIFICACION ANDROID COMPLETADA')

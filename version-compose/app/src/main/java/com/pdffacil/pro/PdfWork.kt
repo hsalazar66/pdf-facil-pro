@@ -98,11 +98,8 @@ internal fun addNewText(context: Context, doc: PDDocument, pageIndex: Int, point
   stream.setTextMatrix(Matrix.getRotateInstance(Math.toRadians(page.rotation.toDouble()),p.x,p.y));stream.showText(value);stream.endText()
  }
 }
-internal fun addImage(doc: PDDocument, pageIndex: Int, bitmap: Bitmap) {
- val page=doc.getPage(pageIndex);val box=page.cropBox
- val image=LosslessFactory.createFromImage(doc,bitmap);val width=minOf(box.width*0.45f,300f);val height=width*bitmap.height/bitmap.width
- require(height<box.height*0.9f) { "La imagen es demasiado alta. Recórtala antes de insertarla." }
- PDPageContentStream(doc,page,PDPageContentStream.AppendMode.APPEND,true,true).use { it.drawImage(image,box.lowerLeftX+(box.width-width)/2,box.lowerLeftY+(box.height-height)/2,width,height) }
+internal fun addImage(doc: PDDocument, pageIndex: Int, bitmap: Bitmap, point:Offset?=null) {
+ placeImageObject(doc,pageIndex,LosslessFactory.createFromImage(doc,bitmap),point)
 }
 
 /** Translate one image occurrence, preserving shared resources and other occurrences. */

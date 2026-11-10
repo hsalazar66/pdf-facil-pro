@@ -36,6 +36,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pdffacil.pro.engine.ContentStreamEngine
@@ -95,6 +97,10 @@ class MainActivity : ComponentActivity() {
  var confirmMessage by remember { mutableStateOf("") }
  var exported by remember { mutableStateOf(true) }
  var about by remember { mutableStateOf(false) }
+ var shareMenu by remember {mutableStateOf(false)}
+ var newPageDialog by remember {mutableStateOf(false)}
+ var imageEditor by remember {mutableStateOf<ImageEditorData?>(null)}
+ var pasteContent by remember {mutableStateOf<PasteContent?>(null)}
  fun task(block: suspend () -> Unit) {
   if(busy) return
   busy=true
@@ -112,7 +118,7 @@ class MainActivity : ComponentActivity() {
    val snapshot=File.createTempFile("sesion-",".pdf",work);source.copyTo(snapshot,true)
    Pair(saved,snapshot)
   }
-  refresh(pair.second,0);draft=pair.first;current=pair.second;history=listOf(pair.second);revision=0;title=name;exported=true;tab="Ver";status="Documento abierto · procesamiento local"
+  refresh(pair.second,0);imageEditor=null;shareMenu=false;newPageDialog=false;pasteContent=null;movingImages=false;addingText=false;draft=pair.first;current=pair.second;history=listOf(pair.second);revision=0;title=name;exported=true;tab="Ver";status="Documento abierto · procesamiento local"
   recent=docs.listFiles()?.filter { it.extension=="pdf" }?.sortedByDescending { it.lastModified() } ?: emptyList()
  }
  fun startSession(source: File, name: String, existingDraft: File?=null) = task { establish(source,name,existingDraft) }
@@ -126,8 +132,8 @@ class MainActivity : ComponentActivity() {
     };establish(info.first,info.second)
    } catch(e:Exception) { status="No se pudo abrir el PDF: ${e.localizedMessage}" }
  }
- fun change(label:String, selectImageAfter:Int?=null, transform:(PDDocument)->Unit) = task {
-  val source=current ?: return@task
+ suspend fun applyChange(label:String, selectImageAfter:Int?=null, pageAfter:Int?=null, transform:(PDDocument)->Unit) {
+  val source=current ?: return
   val next=withContext(Dispatchers.IO) {
    val result=File.createTempFile("revision-",".pdf",work)
    PDDocument.load(source).use { doc ->
@@ -138,18 +144,23 @@ class MainActivity : ComponentActivity() {
    result
   }
   val maxPage=withContext(Dispatchers.IO) { PDDocument.load(next).use { it.numberOfPages-1 } }
-  refresh(next,page.coerceAtMost(maxPage))
+  refresh(next,(pageAfter ?: page).coerceIn(0,maxPage))
   if(selectImageAfter!=null && !view!!.images.isEmpty()) selectedImage=selectImageAfter.coerceAtMost(view!!.images.lastIndex)
   withContext(Dispatchers.IO) { draft?.let { next.copyTo(it,true) } }
   history=history.take(revision+1)+next;revision=history.lastIndex;current=next;exported=false;status="$label · borrador guardado en el dispositivo"
  }
+ fun change(label:String, selectImageAfter:Int?=null, pageAfter:Int?=null, transform:(PDDocument)->Unit) = task { applyChange(label,selectImageAfter,pageAfter,transform) }
  fun restore(index:Int) = task {
   val target=history[index];refresh(target,page.coerceAtMost(withContext(Dispatchers.IO) { PDDocument.load(target).use { it.numberOfPages-1 } }))
   withContext(Dispatchers.IO) { draft?.let { target.copyTo(it,true) } }
   revision=index;current=target;exported=false;status="Cambio recuperado · guarda una copia para exportar"
  }
  val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let { openUri(it) } }
- val save=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+ val save=rememberLauncherForActivityResult(object:ActivityResultContracts.CreateDocument("application/pdf") {
+  override fun createIntent(context:android.content.Context,input:String):Intent = super.createIntent(context,input).apply {
+   putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI,Uri.parse("content://com.android.externalstorage.documents/document/primary%3ADownload"))
+  }
+ }) { uri ->
   if(uri!=null) task {
    val source=current ?: return@task
    withContext(Dispatchers.IO) { context.contentResolver.openOutputStream(uri,"wt")!!.use { output -> source.inputStream().use { it.copyTo(output) } } }
@@ -169,10 +180,47 @@ class MainActivity : ComponentActivity() {
    try { addImage(doc,page,bmp) } finally { bmp.recycle() }
   } }
  }
+ fun shareDocument(destination:PdfDestination) = task {
+  val source=current ?: return@task
+  val uri=withContext(Dispatchers.IO) {preparePdfShare(context,source,title)}
+  val found=launchPdfShare(context,uri,destination)
+  status=if(found) "Elige el destinatario y confirma en la aplicación de destino." else "Ese destino no está disponible. Elige otra aplicación compatible."
+ }
+ fun beginPaste() {
+  try {
+   val payload=readPasteContent(context) ?: error("Copia primero texto o una imagen.")
+   pasteContent=payload;tab="Editar";addingText=false;movingImages=false;selectedImage=null
+   status="Toca la página donde quieres pegar ${if(payload is PasteContent.Text) "el texto" else "la imagen"}."
+  } catch(e:Exception) {status=e.localizedMessage ?: "Portapapeles no disponible"}
+ }
+ fun copySelectedText(text:String,remaining:String?=null,fragment:TextFragment?=null) = task {
+  withContext(Dispatchers.IO) {PDDocument.load(current!!).use {require(it.currentAccessPermission.canExtractContent()) {"El PDF restringe copiar contenido"}}}
+  putTextClipboard(context,text)
+  if(remaining!=null && fragment!=null) applyChange("Texto cortado; pulsa Pegar para colocarlo") {doc -> replaceExistingText(doc,page,fragment.index,remaining,null,null,null)}
+  else status="Texto copiado. Pulsa Pegar y elige su posición."
+ }
+ fun copySelectedImage(cut:Boolean) {
+  val which=selectedImage ?: return
+  task {
+   val uri=withContext(Dispatchers.IO) {
+    PDDocument.load(current!!).use {doc ->
+     val bitmap=selectedImageBitmap(doc,page,which)
+     try {copyBitmapFile(context,bitmap)} finally {bitmap.recycle()}
+    }
+   }
+   putImageClipboard(context,uri)
+   if(cut) applyChange("Imagen cortada; pulsa Pegar para colocarla") {doc -> deleteImage(doc,page,which)}
+   else status="Imagen copiada. Pulsa Pegar y elige su posición."
+  }
+ }
+ fun openImageTools() {
+  val which=selectedImage ?: return
+  task {val bitmap=withContext(Dispatchers.IO) {PDDocument.load(current!!).use {selectedImageBitmap(it,page,which)}};imageEditor=ImageEditorData(which,bitmap)}
+ }
  fun askBeforeLeaving(action:()->Unit) {
   if(!exported) { confirmMessage="Los cambios están guardados como borrador en Recientes. Puedes exportar una copia PDF antes de cambiar de documento.";confirm=action } else action()
  }
- fun home() { current=null;view=null;selected=null;recent=docs.listFiles()?.filter { it.extension=="pdf" }?.sortedByDescending { it.lastModified() } ?: emptyList();status="Tus documentos, siempre contigo" }
+ fun home() { imageEditor=null;shareMenu=false;newPageDialog=false;pasteContent=null;current=null;view=null;selected=null;recent=docs.listFiles()?.filter { it.extension=="pdf" }?.sortedByDescending { it.lastModified() } ?: emptyList();status="Tus documentos, siempre contigo" }
  BackHandler(enabled=current!=null && !busy) { askBeforeLeaving { home() } }
  LaunchedEffect(incoming,busy) {
   if(busy) return@LaunchedEffect
@@ -182,7 +230,7 @@ class MainActivity : ComponentActivity() {
    consumeIncoming()
   }
  }
- DefaultViewerPrompt(enabled=!busy && selected==null && !pagesDialog && !search && confirm==null,manualRequest=defaultRequest) { detectedViewer=it }
+ DefaultViewerPrompt(enabled=!busy && selected==null && !pagesDialog && !search && confirm==null && imageEditor==null && !shareMenu && !newPageDialog,manualRequest=defaultRequest) { detectedViewer=it }
  Scaffold { padding -> Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(padding).padding(horizontal=12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
   Row(Modifier.fillMaxWidth().padding(top=6.dp),verticalAlignment=Alignment.CenterVertically) {
    if(current!=null) MenuIconButton("Anterior",enabled=!busy) { askBeforeLeaving { home() } }
@@ -191,6 +239,7 @@ class MainActivity : ComponentActivity() {
     Text(if(current==null) "PDF Fácil Pro" else title,maxLines=1,overflow=TextOverflow.Ellipsis,fontSize=if(current==null) 25.sp else 15.sp,fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.primary)
     Text(if(current==null) "Tus documentos, siempre contigo" else "${if(exported) "PDF" else "Borrador"} · Página ${page+1} de ${view?.count ?: 0}",fontSize=12.sp)
    }
+   if(current!=null) MenuIconButton("Compartir",enabled=!busy) {shareMenu=true}
    if(current!=null) Button(onClick={ save.launch(title.removeSuffix(".pdf")+"-editado.pdf") },enabled=!busy,shape=RoundedCornerShape(14.dp),contentPadding=PaddingValues(horizontal=12.dp,vertical=12.dp)) { EditorIcon("Guardar",Color.White,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text("Guardar",fontSize=13.sp,fontWeight=FontWeight.SemiBold) }
   }
   if(busy) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -221,7 +270,7 @@ class MainActivity : ComponentActivity() {
     }
    },enabled=!busy,modifier=Modifier.fillMaxWidth()) { Text("Probar edición con un PDF de ejemplo") }
    OutlinedTextField(query,{query=it},label={Text("Buscar documentos recientes")},singleLine=true,modifier=Modifier.fillMaxWidth())
-   Text("Edición real de texto · Versión 2.3 beta",fontSize=12.sp,color=MaterialTheme.colorScheme.primary)
+   Text("Edición real de texto · Versión 2.4 beta",fontSize=12.sp,color=MaterialTheme.colorScheme.primary)
    Text("Recientes",style=MaterialTheme.typography.titleMedium)
    LazyColumn(Modifier.weight(1f)) {
     items(recent.filter { it.name.contains(query,true) }) { f ->
@@ -238,38 +287,51 @@ class MainActivity : ComponentActivity() {
     TextButton(onClick={ about=true }) { Text("Información") }
    }
   } else {
-   ModeMenu(active=tab,enabled=!busy) { mode -> tab=mode;addingText=false;movingImages=false;selectedImage=null;stroke=emptyList() }
+   ModeMenu(active=tab,enabled=!busy) { mode -> tab=mode;pasteContent=null;addingText=false;movingImages=false;selectedImage=null;stroke=emptyList() }
    if(tab=="Editar") {
     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-     MenuAction("Modificar",Modifier.weight(1f),selected=!addingText && !movingImages,enabled=!busy) { addingText=false;movingImages=false;selectedImage=null }
-     MenuAction("Texto nuevo",Modifier.weight(1f),selected=addingText,enabled=!busy) { addingText=true;movingImages=false;selectedImage=null }
-     MenuAction("Imagen",Modifier.weight(1f),selected=movingImages,enabled=!busy) { movingImages=true;addingText=false }
+     MenuAction("Modificar",Modifier.weight(1f),selected=!addingText && !movingImages,enabled=!busy) { pasteContent=null;addingText=false;movingImages=false;selectedImage=null }
+     MenuAction("Texto nuevo",Modifier.weight(1f),selected=addingText,enabled=!busy) { pasteContent=null;addingText=true;movingImages=false;selectedImage=null }
+     MenuAction("Imagen",Modifier.weight(1f),selected=movingImages,enabled=!busy) { pasteContent=null;movingImages=true;addingText=false }
     }
     if(movingImages) Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
      TextButton(onClick={image.launch("image/*")},enabled=!busy) { Text("＋ Añadir imagen") }
      Text(if(selectedImage==null) "Toca una imagen" else "Imagen ${selectedImage!!+1} seleccionada",fontSize=12.sp,color=MenuMuted)
     }
+    if(movingImages) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(4.dp)) {
+     TextButton(onClick={copySelectedImage(false)},enabled=!busy && selectedImage!=null) {Text("Copiar")}
+     TextButton(onClick={copySelectedImage(true)},enabled=!busy && selectedImage!=null) {Text("Cortar")}
+     TextButton(onClick={openImageTools()},enabled=!busy && selectedImage!=null) {Text("Editar imagen")}
+    }
     if(movingImages && view?.images?.isEmpty()==true) Text("No se detectan imágenes independientes. Puedes añadir una con el botón de arriba.",fontSize=12.sp,color=MenuMuted)
-    if(!movingImages && view?.fragments?.isEmpty()==true) Text("Esta página no tiene texto editable compatible. OCR aún no disponible.",fontSize=12.sp,color=MaterialTheme.colorScheme.error)
+    if(!movingImages && !addingText && view?.fragments?.isEmpty()==true) Text("No hay texto seleccionable. Añade texto nuevo o pega contenido.",fontSize=12.sp,color=MenuMuted)
    }
    if(tab=="Anotar") Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
     MenuAction("Resaltar",Modifier.weight(1f),selected=annotation=="Resaltar",enabled=!busy) { annotation="Resaltar" }
     MenuAction("Firma",Modifier.weight(1f),selected=annotation=="Firma",enabled=!busy) { annotation="Firma" }
    }
-   if(tab=="Herramientas") Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-    MenuAction("Unir PDF",Modifier.weight(1f),enabled=!busy) { merge.launch(arrayOf("application/pdf")) }
-    MenuAction("Girar",Modifier.weight(1f),enabled=!busy) { change("Página girada") { doc -> val p=doc.getPage(page);p.rotation=(p.rotation+90)%360 } }
-    MenuAction("Eliminar",Modifier.weight(1f),enabled=!busy && (view?.count ?: 0)>1,danger=true) {
-     confirmMessage="¿Eliminar la página ${page+1}? Puedes recuperarla con Deshacer."
-     confirm={change("Página eliminada") { doc -> require(doc.numberOfPages>1) { "El PDF debe conservar una página." };doc.removePage(page) }}
+   if(tab=="Herramientas") {
+    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+     MenuAction("Hoja nueva",Modifier.weight(1f),enabled=!busy) {newPageDialog=true}
+     MenuAction("Unir PDF",Modifier.weight(1f),enabled=!busy) {merge.launch(arrayOf("application/pdf"))}
+     MenuAction("Girar",Modifier.weight(1f),enabled=!busy) {change("Página girada") {doc ->val p=doc.getPage(page);p.rotation=(p.rotation+90)%360}}
+    }
+    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+     MenuAction("Guardar",Modifier.weight(1f),enabled=!busy) {save.launch(title.removeSuffix(".pdf")+"-editado.pdf")}
+     MenuAction("Compartir",Modifier.weight(1f),enabled=!busy) {shareMenu=true}
+     MenuAction("Eliminar",Modifier.weight(1f),enabled=!busy && (view?.count ?: 0)>1,danger=true) {
+      confirmMessage="¿Eliminar la página ${page+1}? Puedes recuperarla con Deshacer."
+      confirm={change("Página eliminada") {doc ->require(doc.numberOfPages>1) {"El PDF debe conservar una página."};doc.removePage(page)}}
+     }
     }
    }
    if(tab!="Ver") Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
     Text(when(tab) {
-     "Editar" -> if(movingImages) "Arrastra el marco y suelta para mover la imagen." else if(addingText) "Toca donde quieres escribir." else "Toca una frase para modificarla."
+     "Editar" -> if(pasteContent!=null) "Toca donde quieres pegar." else if(movingImages) "Arrastra el marco y suelta para mover la imagen." else if(addingText) "Toca donde quieres escribir." else "Toca una frase para modificarla."
      "Anotar" -> if(annotation=="Firma") "Dibuja tu firma con el dedo." else "Arrastra sobre lo que quieres resaltar."
      else -> "Organiza tu documento."
     },fontSize=12.sp,color=MenuMuted,modifier=Modifier.weight(1f),maxLines=2)
+    if(tab=="Editar") TextButton(onClick={if(pasteContent==null) beginPaste() else pasteContent=null},enabled=!busy) {Text(if(pasteContent==null) "Pegar" else "Cancelar")}
     MenuIconButton("Deshacer",enabled=!busy && revision>0) { restore(revision-1) }
     MenuIconButton("Rehacer",enabled=!busy && revision<history.lastIndex) { restore(revision+1) }
    }
@@ -281,10 +343,20 @@ class MainActivity : ComponentActivity() {
      val fittedWidth=minOf(maxWidth-16.dp,(maxHeight-16.dp)*ratio).coerceAtLeast(1.dp)
      Box(Modifier.size(fittedWidth,fittedWidth/ratio).shadow(3.dp,RoundedCornerShape(2.dp)).graphicsLayer(scaleX=zoom,scaleY=zoom,translationX=pan.x,translationY=pan.y)
       .onSizeChanged { pageW=it.width;pageH=it.height }
-      .pointerInput(p,tab,addingText,movingImages,busy) {
+      .pointerInput(p,tab,addingText,movingImages,pasteContent,busy) {
        if(!busy && tab=="Editar") detectTapGestures { point ->
         val norm=Offset(point.x/pageW,point.y/pageH)
-        if(movingImages) {
+        val pasted=pasteContent
+        if(pasted!=null) {
+         pasteContent=null
+         when(pasted) {
+          is PasteContent.Text -> change("Texto pegado") {doc -> addNewText(context,doc,page,norm,pasted.value.replace('\n',' ').replace('\r',' '))}
+          is PasteContent.Image -> {
+           movingImages=true
+           change("Imagen pegada",selectImageAfter=Int.MAX_VALUE) {doc ->val bitmap=decodePastedImage(context,pasted.uri);try {addImage(doc,page,bitmap,norm)} finally {bitmap.recycle()}}
+          }
+         }
+        } else if(movingImages) {
          selectedImage=p.images.filter { it.rect.contains(norm) }.minByOrNull { it.rect.width*it.rect.height }?.ordinal
         } else if(addingText) { addTextAt=norm;newValue="" }
         else {
@@ -340,20 +412,13 @@ class MainActivity : ComponentActivity() {
     MenuAction("Buscar",Modifier.weight(1f),enabled=!busy) { search=true }
     MenuAction("Ampliar",Modifier.weight(1f),enabled=!busy) { zoom=(zoom+0.5f).coerceAtMost(4f) }
     MenuAction("Ajustar",Modifier.weight(1f),enabled=!busy) { zoom=1f;pan=Offset.Zero }
-    MenuAction("Compartir",Modifier.weight(1f),enabled=!busy,onClick={task {
-     val uri=withContext(Dispatchers.IO) {
-      val folder=File(context.cacheDir,"compartir").apply { mkdirs() }
-      val target=File(folder,"Documento-editado.pdf");current!!.copyTo(target,true)
-      androidx.core.content.FileProvider.getUriForFile(context,"${context.packageName}.files",target)
-     }
-     context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type="application/pdf";putExtra(Intent.EXTRA_STREAM,uri);clipData=android.content.ClipData.newRawUri("PDF",uri);addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) },"Compartir PDF"))
-    }})
+    MenuAction("Compartir",Modifier.weight(1f),enabled=!busy) {shareMenu=true}
    }
   }
  } }
  if(selected!=null) {
   val fragment=selected!!
-  TextEditorSheet(fragment,onDismiss={selected=null},onApply={value,family,bold,italic,size,color ->
+  TextEditorSheet(fragment,onDismiss={selected=null},onCopy={value ->selected=null;copySelectedText(value)},onCut={value,remaining ->selected=null;copySelectedText(value,remaining,fragment)},readClipboard={runCatching {(readPasteContent(context) as? PasteContent.Text)?.value}.getOrNull()},onApply={value,family,bold,italic,size,color ->
    selected=null
    change("Texto original modificado") { doc ->
     val font=if(family=="Original") null else fontFor(context,doc,family,bold,italic)
@@ -361,6 +426,17 @@ class MainActivity : ComponentActivity() {
    }
   })
  }
+ if(shareMenu) ShareDocumentSheet(onDismiss={shareMenu=false}) {destination ->
+  shareMenu=false
+  if(destination==PdfDestination.DEVICE) save.launch(title.removeSuffix(".pdf")+"-editado.pdf") else shareDocument(destination)
+ }
+ if(newPageDialog) NewPageDialog(onDismiss={newPageDialog=false}) {position,size ->
+  newPageDialog=false
+  val at=when(position) {"Antes"->page;"Al final"->view!!.count;else->page+1}
+  tab="Editar";movingImages=false;addingText=true;pasteContent=null
+  change("Hoja nueva añadida",pageAfter=at) {doc -> insertBlankPage(doc,page,position,size)}
+ }
+ imageEditor?.let {data -> ImageToolsSheet(data,onDismiss={imageEditor=null},onResize={factor ->imageEditor=null;change("Tamaño de imagen aplicado",selectImageAfter=data.ordinal) {doc ->resizeImage(doc,page,data.ordinal,factor)}},onRotate={imageEditor=null;change("Imagen girada",selectImageAfter=data.ordinal) {doc ->rotateImage(doc,page,data.ordinal)}},onCrop={area ->imageEditor=null;change("Imagen recortada",selectImageAfter=data.ordinal) {doc ->cropImage(doc,page,data.ordinal,area)}}) }
  if(addTextAt!=null) AlertDialog(onDismissRequest={addTextAt=null},title={Text("Añadir texto nuevo")},text={OutlinedTextField(newValue,{newValue=it.replace('\n',' ')},label={Text("Texto nuevo")},singleLine=true)},confirmButton={TextButton(onClick={val point=addTextAt!!;addTextAt=null;change("Texto nuevo añadido") { doc -> addNewText(context,doc,page,point,newValue) }},enabled=newValue.isNotBlank()) { Text("Añadir") }},dismissButton={TextButton(onClick={addTextAt=null}) { Text("Cancelar") }})
  if(confirm!=null) AlertDialog(onDismissRequest={confirm=null},title={Text("Confirmar")},text={Text(confirmMessage)},confirmButton={TextButton(onClick={val action=confirm;confirm=null;action?.invoke()}) { Text("Continuar") }},dismissButton={TextButton(onClick={confirm=null}) { Text("Volver") }})
  if(pagesDialog) AlertDialog(onDismissRequest={pagesDialog=false},title={Text("Ir a página")},text={LazyColumn { items((1..(view?.count ?: 0)).toList()) { n -> TextButton(onClick={pagesDialog=false;task { current?.let { refresh(it,n-1) } }}) { Text("Página $n") } } }},confirmButton={TextButton(onClick={pagesDialog=false}) { Text("Cerrar") }})
@@ -368,15 +444,16 @@ class MainActivity : ComponentActivity() {
   var term by remember { mutableStateOf("") }
   AlertDialog(onDismissRequest={search=false},title={Text("Buscar en esta página")},text={Column { OutlinedTextField(term,{term=it},label={Text("Texto a buscar")});view?.fragments?.filter { term.isNotBlank() && it.text.contains(term,true) }?.forEach { f -> TextButton(onClick={search=false;tab="Editar";selected=f}) { Text(f.text,maxLines=2) } } }},confirmButton={TextButton(onClick={search=false}) { Text("Cerrar") }})
  }
- if(about) AlertDialog(onDismissRequest={about=false},title={Text("PDF Fácil Pro 2.3 beta")},text={Column(Modifier.verticalScroll(rememberScrollState())) {
+ if(about) AlertDialog(onDismissRequest={about=false},title={Text("PDF Fácil Pro 2.4 beta")},text={Column(Modifier.verticalScroll(rememberScrollState())) {
   Text("Editor gratuito, local y sin anuncios. La edición sustituye fragmentos de texto dentro del PDF. No incluye OCR ni redistribución automática de párrafos.\n\nMotor basado en PDF Inspector, de Shardul Vikram Singh (MIT), y PDFBox Android (Apache 2.0). Fuentes Liberation con sus licencias. Avisos incluidos en la aplicación.")
   Text(context.assets.open("LICENCIA-PDF-INSPECTOR-MIT.txt").bufferedReader().use { it.readText() },fontSize=10.sp)
  }},confirmButton={TextButton(onClick={about=false}) { Text("Cerrar") }})
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun TextEditorSheet(fragment:TextFragment,onDismiss:()->Unit,onApply:(String,String,Boolean,Boolean,Float,Int)->Unit) {
- var value by remember(fragment.index) { mutableStateOf(fragment.text) }
+@Composable private fun TextEditorSheet(fragment:TextFragment,onDismiss:()->Unit,onCopy:(String)->Unit,onCut:(String,String)->Unit,readClipboard:()->String?,onApply:(String,String,Boolean,Boolean,Float,Int)->Unit) {
+ var value by remember(fragment.index) { mutableStateOf(TextFieldValue(fragment.text,TextRange(fragment.text.length))) }
+ var clipboardMessage by remember {mutableStateOf("")}
  var family by remember { mutableStateOf("Original") }
  var bold by remember { mutableStateOf(fragment.font.contains("bold",true)) }
  var italic by remember { mutableStateOf(fragment.font.contains("italic",true) || fragment.font.contains("oblique",true)) }
@@ -386,7 +463,17 @@ class MainActivity : ComponentActivity() {
   Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).imePadding().padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
    Text("Editar texto original",style=MaterialTheme.typography.titleLarge)
    Text("${fragment.font} · Fragmento seleccionado",fontSize=12.sp)
-   OutlinedTextField(value,{value=it.replace('\n',' ').replace('\r',' ')},label={Text("Contenido del PDF")},modifier=Modifier.fillMaxWidth(),maxLines=4)
+   OutlinedTextField(value,{value=it.copy(text=it.text.replace('\n',' ').replace('\r',' '))},label={Text("Contenido del PDF")},modifier=Modifier.fillMaxWidth(),maxLines=4)
+   Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+    TextButton(onClick={val r=value.selection;onCopy(if(r.collapsed) value.text else value.text.substring(r.min,r.max))},enabled=value.text.isNotEmpty()) {Text("Copiar")}
+    TextButton(onClick={val r=if(value.selection.collapsed) TextRange(0,value.text.length) else value.selection;onCut(value.text.substring(r.min,r.max),value.text.removeRange(r.min,r.max))},enabled=value.text.isNotEmpty()) {Text("Cortar")}
+    TextButton(onClick={
+     val pasted=readClipboard()?.replace('\n',' ')?.replace('\r',' ')
+     if(pasted==null) clipboardMessage="Copia texto primero. Para pegar una imagen usa Pegar en la página."
+     else {val r=value.selection;value=TextFieldValue(value.text.replaceRange(r.min,r.max,pasted),TextRange(r.min+pasted.length));clipboardMessage=""}
+    }) {Text("Pegar")}
+   }
+   if(clipboardMessage.isNotEmpty()) Text(clipboardMessage,fontSize=12.sp)
    Row(horizontalArrangement=Arrangement.spacedBy(6.dp)) { listOf("Original","Sans","Serif").forEach { f -> FilterChip(family==f,{family=f},label={Text(f)}) } }
    Row(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically) {
     OutlinedTextField(size,{size=it},label={Text("Tamaño")},singleLine=true,modifier=Modifier.width(95.dp))
@@ -400,7 +487,7 @@ class MainActivity : ComponentActivity() {
     }
    }
    Text("Se sustituye este fragmento. El texto más largo puede ocupar más espacio; revisa el resultado. Si falta un carácter en la fuente original, selecciona Sans o Serif.",fontSize=12.sp)
-   Button(onClick={onApply(value,family,bold,italic,size.replace(',','.').toFloat(),color)},enabled=size.replace(',','.').toFloatOrNull()?.let { it in 4f..120f }==true,modifier=Modifier.fillMaxWidth()) { Text("Aplicar cambios") }
+   Button(onClick={onApply(value.text,family,bold,italic,size.replace(',','.').toFloat(),color)},enabled=size.replace(',','.').toFloatOrNull()?.let { it in 4f..120f }==true,modifier=Modifier.fillMaxWidth()) { Text("Aplicar cambios") }
    TextButton(onClick=onDismiss,modifier=Modifier.fillMaxWidth()) { Text("Cancelar") }
   }
  }
