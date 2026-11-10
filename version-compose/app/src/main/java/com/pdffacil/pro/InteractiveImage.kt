@@ -49,7 +49,7 @@ import kotlin.math.*
    val width=size.width.toFloat();val height=size.height.toFloat()
    val base=fragment.rect
    val center=Offset(base.center.x*width,base.center.y*height)
-   val corner=Offset(base.right*width,base.bottom*height)
+   val corner=listOf(base.topLeft,base.topRight,base.bottomLeft,base.bottomRight).map {Offset(it.x*width,it.y*height)}.minByOrNull {(down.position-it).getDistance()}!!
    val handle=(down.position-corner).getDistance()<32.dp.toPx()
    val normalized=Offset(down.position.x/width,down.position.y/height)
    if(!base.inflate(0.04f).contains(normalized)) return@awaitEachGesture

@@ -23,6 +23,7 @@ class ExportVerificationTest {
   val source=System.getenv("PDF_SMOKE_EXPORT")
   assumeTrue("Después del emulador",source!=null)
   val dir=File(source!!).parentFile!!
+  PDDocument.load(File(dir,"redimensionado.pdf")).use {doc->val images=imageNodes(doc.getPage(0));assertTrue(images[0].bounds!!.width>105f);assertEquals(100f,images[1].bounds!!.width,0.1f)}
   java.util.zip.ZipFile(File(dir,"exportado-editable.docx")).use {zip->
    val text=zip.getInputStream(zip.getEntry("word/document.xml")).bufferedReader().readText()
    assertTrue(text.contains("TextoClipboard"));assertTrue(text.contains("Nombre"));assertTrue(text.contains("Monto"));assertTrue(text.contains("<w:tbl>"))

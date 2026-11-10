@@ -403,8 +403,8 @@ class MainActivity : ComponentActivity() {
         val norm=Offset(point.x/pageW,point.y/pageH)
         val pasted=pasteContent
         if(tableToPlace!=null) {
-         val data=tableToPlace!!;tableToPlace=null
-         change("Tabla insertada") {doc->insertTable(context,doc,page,norm,data)}
+         val data=tableToPlace!!
+         task {applyChange("Tabla insertada") {doc->insertTable(context,doc,page,norm,data)}}
         } else if(pasted!=null) {
          pasteContent=null
          when(pasted) {
