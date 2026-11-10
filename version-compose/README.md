@@ -26,26 +26,19 @@ Configurar ahora consulta el visor que Android resuelve para un PDF. Si ya es ot
 
 Android exige la confirmación del usuario y no permite a esta app imponerse como visor. Las apps con lectores internos pueden ignorar la asociación. El icono que muestra Descargas/Archivos lo decide ese gestor: puede mantener la miniatura o un icono PDF genérico. El icono de PDF Fácil Pro aparece en el selector de aplicaciones; esta app no puede sustituir los iconos de otro gestor.
 
-## Firma permanente y actualizaciones
+## Instalación de esta entrega de prueba
 
-Los APK anteriores de depuración se firmaron con claves temporales distintas, por lo que Android puede exigir desinstalarlos. Esas claves antiguas no están disponibles y no se pueden reconstruir desde el APK. Para migrar a esta nueva firma, exporta tus documentos antes de retirar la versión anterior.
+Por decisión del propietario, la entrega 2.4 utiliza la APK de depuración compilada y firmada automáticamente en GitHub. No requiere configurar secretos. El flujo comprueba su firma con apksigner y publica el mismo archivo probado en el emulador, sin modificarlo.
 
-La clave permanente nueva se conserva fuera del repositorio. Su certificado público está fijado en `signing-certificate.sha256`. Las entregas siguientes deben conservar applicationId `com.pdffacil.pro`, esa misma clave y un versionCode creciente. Entonces Android podrá actualizar sin borrar los datos; la confirmación de instalación continúa siendo responsabilidad del sistema.
+**La firma de esta APK difiere de la versión 2.3.** Exporta tus documentos a una carpeta fuera de la app antes de desinstalar la anterior e instalar la 2.4. Desinstalar borra los borradores privados. No se garantiza que próximas compilaciones con una firma de prueba puedan actualizar esta entrega. Android requiere la confirmación de instalación.
 
-Para automatizar la firma en GitHub, el propietario debe crear dos Repository secrets en Settings → Secrets and variables → Actions:
-
-- `ANDROID_KEYSTORE_BASE64`: archivo base64 de la clave permanente.
-- `ANDROID_KEYSTORE_PASSWORD`: contraseña de esa misma clave.
-
-El alias fijo es `pdffacilpro`. El respaldo privado se entrega al propietario por separado y nunca se sube al repositorio ni a Releases. La conexión usada para editar el código no tiene permiso para configurar esos secretos (HTTP 403).
-
-El flujo Compilar PDF Facil Pro Compose compila, ejecuta pruebas y firma la versión release usando los secretos. Comprueba el certificado permanente y verifica en un emulador una actualización real desde la APK 2.3 publicada, conservando borradores. Si falta la firma o falla una comprobación, no publica la nueva APK. No crea claves de sustitución.
+El certificado público de la antigua firma permanente se conserva en `signing-certificate.sha256` para referencia; no corresponde a la firma de esta entrega. No se publica ninguna clave privada. Para retomar actualizaciones compatibles con la 2.3 se necesitaría su respaldo de clave privada y contraseña.
 
 ## Validación
 
 Las pruebas JVM usan PDFBox real: sustitución y reapertura del texto, caracteres españoles y estilo; movimiento, tamaño, giro, recorte e independencia de imágenes; cortar y pegar; inserción de hojas y conversión del área de recorte a píxeles. Un puente exclusivo de pruebas carga los assets reales del AAR y no se incluye en la APK.
 
-El flujo de push/ejecución manual arranca Android 10 API 29. Comprueba la oferta de visor, reinstalación y apertura externa; mueve, amplía, gira, recorta, copia, corta y pega imágenes; inserta una hoja; corta y pega texto; exporta el documento al almacenamiento. Una prueba JVM reabre ese PDF exportado y verifica sus páginas, imágenes y texto. Otro emulador instala la APK release 2.3 y la actualiza con la release 2.4 sin borrar datos. Las capturas y resultados quedan como artefactos de GitHub Actions. La entrega se publica solo si pasan esas comprobaciones.
+El flujo de push/ejecución manual arranca Android 10 API 29. Comprueba la oferta de visor, reinstalación y apertura externa; mueve, amplía, gira, recorta, copia, corta y pega imágenes; inserta una hoja; corta y pega texto; exporta el documento al almacenamiento. Una prueba JVM reabre ese PDF exportado y verifica sus páginas, imágenes y texto. La entrega de prueba exige reinstalar al cambiar de la firma 2.3; el script de actualización con la antigua firma queda como referencia y no se ejecuta en este flujo. Las capturas y resultados quedan como artefactos de GitHub Actions. La entrega se publica solo si pasan esas comprobaciones.
 
 Para compilar: JDK 17, SDK 35, Gradle 8.9; `./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug`. Las fuentes se descargan al compilar de una revisión fijada y se comprueban con SHA-256; se incluyen en la APK para uso sin conexión. Conviene comprobar también en el teléfono la elección Siempre, el regreso desde Ajustes y el envío a las aplicaciones que tenga instaladas el usuario.
 
