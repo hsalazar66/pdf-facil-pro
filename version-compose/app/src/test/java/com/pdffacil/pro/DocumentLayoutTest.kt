@@ -45,15 +45,11 @@ class DocumentLayoutTest {
   }
  }
  @Test fun createScannedFixtureForOfflineOcrOnAndroid() {
-  val bitmap=java.awt.image.BufferedImage(1200,600,java.awt.image.BufferedImage.TYPE_INT_RGB)
-  val g=bitmap.createGraphics();g.color=java.awt.Color.WHITE;g.fillRect(0,0,1200,600);g.color=java.awt.Color.BLACK
-  g.font=java.awt.Font.createFont(java.awt.Font.TRUETYPE_FONT,File("src/main/assets/fonts/LiberationSans-Regular.ttf")).deriveFont(64f)
-  g.drawString("FACTURA OCR LOCAL",60,160);g.drawString("TOTAL 12345",60,300);g.dispose()
   PDDocument().use {doc->
    val page=PDPage();doc.addPage(page)
    val im=com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject(doc).apply {width=1200;height=600;bitsPerComponent=8;colorSpace=com.tom_roush.pdfbox.pdmodel.graphics.color.PDDeviceRGB.INSTANCE}
-   val rgb=ByteArray(1200*600*3);var at=0
-   for(y in 0 until 600) for(x in 0 until 1200) {val pixel=bitmap.getRGB(x,y);rgb[at++]=(pixel shr 16).toByte();rgb[at++]=(pixel shr 8).toByte();rgb[at++]=pixel.toByte()}
+   val compressed=java.util.Base64.getDecoder().decode(File("src/test/resources/ocr-fixture.rgb.gz.b64").readText().trim())
+   val rgb=java.util.zip.GZIPInputStream(compressed.inputStream()).use {it.readBytes()}
    im.cosObject.createOutputStream(com.tom_roush.pdfbox.cos.COSName.FLATE_DECODE).use {it.write(rgb)}
    PDPageContentStream(doc,page).use {it.drawImage(im,20f,400f,570f,285f)}
    val output=File("build/verification/escaneo-ocr.pdf");output.parentFile.mkdirs();doc.save(output)
