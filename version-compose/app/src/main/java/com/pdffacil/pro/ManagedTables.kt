@@ -45,8 +45,8 @@ private fun bytes(stream:COSStream):ByteArray = stream.createInputStream().use {
 private fun decode(d:COSDictionary):ManagedTable {
  val data=d.getDictionaryObject(COSName.getPDFName("Cells")) as? COSArray ?: error("Faltan las celdas")
  require(data.size() in 1..20)
- val cells=data.map {row->val a=row as COSArray;require(a.size() in 1..10);a.map {value->
-  val c=value as COSDictionary;val picture=c.getDictionaryObject(COSName.getPDFName("Picture")) as? COSStream
+ val cells=data.map {row->val a=(if(row is COSObject) row.`object` else row) as COSArray;require(a.size() in 1..10);a.map {value->
+  val c=(if(value is COSObject) value.`object` else value) as COSDictionary;val picture=c.getDictionaryObject(COSName.getPDFName("Picture")) as? COSStream
   TableCell(c.getString("Text") ?: "",picture?.let {bytes(it)},c.getInt("PictureWidth"),c.getInt("PictureHeight"))
  }}
  return ManagedTable(d.getString("Id") ?: error("Falta identificador"),cells,number(d,"X",0.09f),number(d,"Y",0.15f),number(d,"Width",0.82f),number(d,"Height",0f),floatList(d,"Columns"),floatList(d,"Rows"),d.getInt("Rotation"),false,number(d,"FontSize",12f))
@@ -164,3 +164,4 @@ internal fun writeManagedTable(doc:PDDocument,pageIndex:Int,input:ManagedTable,f
  return table
 }
 internal fun upsertTable(context:Context,doc:PDDocument,page:Int,table:ManagedTable):ManagedTable = writeManagedTable(doc,page,table,fontFor(context,doc,"Sans",false,false)) {PDImageXObject.createFromByteArray(doc,it,"imagen de celda")}
+
