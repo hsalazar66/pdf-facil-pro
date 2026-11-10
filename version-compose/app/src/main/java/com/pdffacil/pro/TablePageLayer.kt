@@ -51,7 +51,7 @@ import kotlin.math.*
    select(table.id)
    val corner=Offset(table.rect.right*w,table.rect.bottom*h)
    val resize=(down.position-corner).getDistance()<20.dp.toPx()
-   var dragged=false;var updated=table
+   var dragged=false;var updated:ManagedTable=table
    do {
     val event=awaitPointerEvent();val pointer=event.changes.firstOrNull {it.id==down.id} ?: break
     val delta=pointer.position-down.position
@@ -82,3 +82,4 @@ import kotlin.math.*
   }
  }
 }
+
