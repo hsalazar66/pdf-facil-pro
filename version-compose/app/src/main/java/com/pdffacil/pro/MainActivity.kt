@@ -104,9 +104,14 @@ class MainActivity : ComponentActivity() {
  var resizing by remember {mutableStateOf(false)}
  var selectionPage by remember {mutableStateOf<TextPage?>(null)}
  var selectionIndices by remember {mutableStateOf(emptySet<Int>())}
+ var tableMode by remember {mutableStateOf(false)}
+ var selectedTable by remember {mutableStateOf<String?>(null)}
+ var tableEditor by remember {mutableStateOf<ManagedTable?>(null)}
+ var tableCell by remember {mutableStateOf(0 to 0)}
+ var tableError by remember {mutableStateOf("")}
  var tableDialog by remember {mutableStateOf(false)}
  var copiedTable by remember {mutableStateOf<List<List<String>>?>(null)}
- var tableToPlace by remember {mutableStateOf<List<List<String>>?>(null)}
+ var tableToPlace by remember {mutableStateOf<ManagedTable?>(null)}
  var exportDialog by remember {mutableStateOf(false)}
  var pendingExport by remember {mutableStateOf<File?>(null)}
  var pasteContent by remember {mutableStateOf<PasteContent?>(null)}
@@ -117,7 +122,7 @@ class MainActivity : ComponentActivity() {
  }
  suspend fun refresh(file: File, at: Int=page) {
   val p=withContext(Dispatchers.IO) { preview(file,at) }
-  resizing=false;selectionPage=null;selectionIndices=emptySet();tableToPlace=null;view=p;page=at;zoom=1f;pan=Offset.Zero;selected=null;selectedImage=null;draggingImage=null;imageDelta=Offset.Zero;stroke=emptyList()
+  resizing=false;selectedTable=null;selectionPage=null;selectionIndices=emptySet();tableToPlace=null;view=p;page=at;zoom=1f;pan=Offset.Zero;selected=null;selectedImage=null;draggingImage=null;imageDelta=Offset.Zero;stroke=emptyList()
  }
  suspend fun establish(source: File, name: String, existingDraft: File?=null) {
   val pair=withContext(Dispatchers.IO) {
@@ -127,7 +132,7 @@ class MainActivity : ComponentActivity() {
    val snapshot=File.createTempFile("sesion-",".pdf",work);source.copyTo(snapshot,true)
    Pair(saved,snapshot)
   }
-  refresh(pair.second,0);imageEditor=null;shareMenu=false;newPageDialog=false;pasteContent=null;movingImages=false;addingText=false;draft=pair.first;current=pair.second;history=listOf(pair.second);revision=0;title=name;exported=true;tab="Ver";status="Documento abierto · procesamiento local"
+  refresh(pair.second,0);tableMode=false;tableEditor=null;tableDialog=false;imageEditor=null;shareMenu=false;newPageDialog=false;pasteContent=null;movingImages=false;addingText=false;draft=pair.first;current=pair.second;history=listOf(pair.second);revision=0;title=name;exported=true;tab="Ver";status="Documento abierto · procesamiento local"
   recent=docs.listFiles()?.filter { it.extension=="pdf" }?.sortedByDescending { it.lastModified() } ?: emptyList()
  }
  fun startSession(source: File, name: String, existingDraft: File?=null) = task { establish(source,name,existingDraft) }
@@ -251,6 +256,19 @@ class MainActivity : ComponentActivity() {
   tab="Editar";resizing=false;movingImages=false;addingText=false;pasteContent=null;selectionIndices=emptySet();selectionPage=extracted
   status="Arrastra sobre varias líneas. Puedes sumar otras áreas a la selección."
  }
+ fun openTableEditor(model:ManagedTable?,cell:Pair<Int,Int> = 0 to 0) {
+  tableEditor=model;tableCell=cell;tableError="";tableDialog=true
+ }
+ fun beginTables() {
+  tab="Editar";tableMode=true;resizing=false;movingImages=false;addingText=false;pasteContent=null;selectionPage=null;tableToPlace=null
+  val existing=view?.tables ?: emptyList();selectedTable=existing.lastOrNull()?.id
+  status="Toca una celda para editar. Arrastra la tabla o su esquina para cambiar el ancho."
+  if(existing.isEmpty()) openTableEditor(null)
+ }
+ fun saveTable(model:ManagedTable,label:String) = task {
+  try {applyChange(label) {doc->upsertTable(context,doc,page,model)};selectedTable=model.id;tableMode=true;tableDialog=false;tableEditor=null;tableError=""}
+  catch(e:Exception) {tableError=e.localizedMessage ?: "No se pudo guardar la tabla";throw e}
+ }
  fun copyMany(asTable:Boolean) {
   val source=selectionPage ?: return
   val cells=source.cells.filterIndexed {index,_->index in selectionIndices}
@@ -262,7 +280,7 @@ class MainActivity : ComponentActivity() {
  fun askBeforeLeaving(action:()->Unit) {
   if(!exported) { confirmMessage="Los cambios están guardados como borrador en Recientes. Puedes exportar una copia PDF antes de cambiar de documento.";confirm=action } else action()
  }
- fun home() { resizing=false;selectionPage=null;selectionIndices=emptySet();tableDialog=false;copiedTable=null;tableToPlace=null;exportDialog=false; imageEditor=null;shareMenu=false;newPageDialog=false;pasteContent=null;current=null;view=null;selected=null;recent=docs.listFiles()?.filter { it.extension=="pdf" }?.sortedByDescending { it.lastModified() } ?: emptyList();status="Tus documentos, siempre contigo" }
+ fun home() { tableMode=false;selectedTable=null;tableEditor=null;resizing=false;selectionPage=null;selectionIndices=emptySet();tableDialog=false;copiedTable=null;tableToPlace=null;exportDialog=false; imageEditor=null;shareMenu=false;newPageDialog=false;pasteContent=null;current=null;view=null;selected=null;recent=docs.listFiles()?.filter { it.extension=="pdf" }?.sortedByDescending { it.lastModified() } ?: emptyList();status="Tus documentos, siempre contigo" }
  BackHandler(enabled=current!=null && !busy) { askBeforeLeaving { home() } }
  LaunchedEffect(incoming,busy) {
   if(busy) return@LaunchedEffect
@@ -312,7 +330,7 @@ class MainActivity : ComponentActivity() {
     }
    },enabled=!busy,modifier=Modifier.fillMaxWidth()) { Text("Probar edición con un PDF de ejemplo") }
    OutlinedTextField(query,{query=it},label={Text("Buscar documentos recientes")},singleLine=true,modifier=Modifier.fillMaxWidth())
-   Text("Edición real de texto · Versión 2.5 beta",fontSize=12.sp,color=MaterialTheme.colorScheme.primary)
+   Text("Edición real de texto · Versión 2.6 beta",fontSize=12.sp,color=MaterialTheme.colorScheme.primary)
    Text("Recientes",style=MaterialTheme.typography.titleMedium)
    LazyColumn(Modifier.weight(1f)) {
     items(recent.filter { it.name.contains(query,true) }) { f ->
@@ -329,8 +347,8 @@ class MainActivity : ComponentActivity() {
     TextButton(onClick={ about=true }) { Text("Información") }
    }
   } else {
-   ModeMenu(active=tab,enabled=!busy) { mode -> tab=mode;resizing=false;selectionPage=null;selectionIndices=emptySet();tableToPlace=null;pasteContent=null;addingText=false;movingImages=false;selectedImage=null;stroke=emptyList() }
-   if(tab=="Editar") {
+   ModeMenu(active=tab,enabled=!busy) { mode -> tab=mode;tableMode=false;selectedTable=null;resizing=false;selectionPage=null;selectionIndices=emptySet();tableToPlace=null;pasteContent=null;addingText=false;movingImages=false;selectedImage=null;stroke=emptyList() }
+   if(tab=="Editar" && !tableMode) {
     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
      MenuAction("Modificar",Modifier.weight(1f),selected=!addingText && !movingImages,enabled=!busy) { pasteContent=null;resizing=false;selectionPage=null;tableToPlace=null;addingText=false;movingImages=false;selectedImage=null }
      MenuAction("Texto nuevo",Modifier.weight(1f),selected=addingText,enabled=!busy) { pasteContent=null;resizing=false;selectionPage=null;tableToPlace=null;addingText=true;movingImages=false;selectedImage=null }
@@ -340,7 +358,10 @@ class MainActivity : ComponentActivity() {
      TextButton(onClick={image.launch("image/*")},enabled=!busy) { Text("＋ Añadir imagen") }
      Text(if(selectedImage==null) "Toca una imagen" else "Imagen ${selectedImage!!+1} seleccionada",fontSize=12.sp,color=MenuMuted)
     }
-    if(!movingImages && selectionPage==null) TextButton(onClick={beginSelection()},enabled=!busy) {Text("Seleccionar varias líneas / tabla")}
+    if(!movingImages && selectionPage==null) Row {
+     TextButton(onClick={beginSelection()},enabled=!busy) {Text("Seleccionar varias líneas / tabla")}
+     TextButton(onClick={beginTables()},enabled=!busy) {Text("Tablas")}
+    }
     if(selectionPage!=null) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
      TextButton(onClick={copyMany(false)},enabled=!busy && selectionIndices.isNotEmpty()) {Text("Copiar líneas")}
      TextButton(onClick={copyMany(true)},enabled=!busy && selectionIndices.isNotEmpty()) {Text("Copiar tabla")}
@@ -356,13 +377,21 @@ class MainActivity : ComponentActivity() {
     if(movingImages && view?.images?.isEmpty()==true) Text("No se detectan imágenes independientes. Puedes añadir una con el botón de arriba.",fontSize=12.sp,color=MenuMuted)
     if(!movingImages && !addingText && view?.fragments?.isEmpty()==true) Text("No hay texto seleccionable. Añade texto nuevo o pega contenido.",fontSize=12.sp,color=MenuMuted)
    }
+   if(tab=="Editar" && tableMode) {
+    val chosen=view?.tables?.firstOrNull {it.id==selectedTable}
+    ManagedTableToolbar(chosen!=null,busy,onNew={openTableEditor(null)},onEdit={chosen?.let {openTableEditor(it)}},onFit={chosen?.let {saveTable(it.copy(width=0.82f,fontSize=12f),"Tabla autoajustada")}},onCopy={chosen?.let {table->
+     val rows=table.cells.map {r->r.map {it.text}}
+     val clipboard=context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+     clipboard.setPrimaryClip(android.content.ClipData.newHtmlText("Datos de tabla",tsv(rows),tableHtml(rows)));status="Datos de tabla copiados para Excel o Word."
+    }},onDelete={chosen?.let {model->confirmMessage="¿Eliminar esta tabla y sus celdas? Puedes recuperarla con Deshacer.";confirm={change("Tabla eliminada") {doc->removeManagedTable(doc.getPage(page),model.id)}}}},onClose={tableMode=false;selectedTable=null;tableToPlace=null})
+   }
    if(tab=="Anotar") Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
     MenuAction("Resaltar",Modifier.weight(1f),selected=annotation=="Resaltar",enabled=!busy) { annotation="Resaltar" }
     MenuAction("Firma",Modifier.weight(1f),selected=annotation=="Firma",enabled=!busy) { annotation="Firma" }
    }
    if(tab=="Herramientas") {
     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-     MenuAction("Tabla",Modifier.weight(1f),enabled=!busy) {tableDialog=true}
+     MenuAction("Tabla",Modifier.weight(1f),enabled=!busy) {beginTables()}
      MenuAction("Exportar",Modifier.weight(1f),enabled=!busy) {exportDialog=true}
      MenuAction("Seleccionar",Modifier.weight(1f),enabled=!busy) {beginSelection()}
     }
@@ -382,29 +411,29 @@ class MainActivity : ComponentActivity() {
    }
    if(tab!="Ver") Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
     Text(when(tab) {
-     "Editar" -> if(tableToPlace!=null) "Toca para colocar la tabla." else if(selectionPage!=null) "Arrastra para seleccionar líneas." else if(resizing) "Usa una esquina o dos dedos." else if(pasteContent!=null) "Toca donde quieres pegar." else if(movingImages) "Arrastra el marco y suelta para mover la imagen." else if(addingText) "Toca donde quieres escribir." else "Toca una frase para modificarla."
+     "Editar" -> if(tableToPlace!=null) "Toca para colocar la tabla; se ajustará a la página." else if(tableMode) "Toca una celda; arrastra para mover o cambiar el ancho." else if(selectionPage!=null) "Arrastra para seleccionar líneas." else if(resizing) "Usa una esquina o dos dedos." else if(pasteContent!=null) "Toca donde quieres pegar." else if(movingImages) "Arrastra el marco y suelta para mover la imagen." else if(addingText) "Toca donde quieres escribir." else "Toca una frase para modificarla."
      "Anotar" -> if(annotation=="Firma") "Dibuja tu firma con el dedo." else "Arrastra sobre lo que quieres resaltar."
      else -> "Organiza tu documento."
     },fontSize=12.sp,color=MenuMuted,modifier=Modifier.weight(1f),maxLines=2)
-    if(tab=="Editar") TextButton(onClick={if(pasteContent==null) {selectionPage=null;resizing=false;tableToPlace=null;beginPaste()} else pasteContent=null},enabled=!busy) {Text(if(pasteContent==null) "Pegar" else "Cancelar")}
+    if(tab=="Editar" && !tableMode) TextButton(onClick={if(pasteContent==null) {selectionPage=null;resizing=false;tableToPlace=null;beginPaste()} else pasteContent=null},enabled=!busy) {Text(if(pasteContent==null) "Pegar" else "Cancelar")}
     MenuIconButton("Deshacer",enabled=!busy && revision>0) { restore(revision-1) }
     MenuIconButton("Rehacer",enabled=!busy && revision<history.lastIndex) { restore(revision+1) }
    }
-   BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(18.dp)).clipToBounds().background(Color(0xFFE7EEEA)).pointerInput(tab,busy,movingImages) {
-    if(!busy && tab!="Anotar" && !(tab=="Editar" && (movingImages || selectionPage!=null || tableToPlace!=null))) detectTransformGestures { _, delta, scale, _ -> zoom=(zoom*scale).coerceIn(1f,4f);pan=if(zoom>1f) pan+delta else Offset.Zero }
+   BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(18.dp)).clipToBounds().background(Color(0xFFE7EEEA)).pointerInput(tab,busy,movingImages,tableMode) {
+    if(!busy && tab!="Anotar" && !(tab=="Editar" && (movingImages || tableMode || selectionPage!=null || tableToPlace!=null))) detectTransformGestures { _, delta, scale, _ -> zoom=(zoom*scale).coerceIn(1f,4f);pan=if(zoom>1f) pan+delta else Offset.Zero }
    },contentAlignment=Alignment.Center) {
     view?.let { p ->
      val ratio=p.bitmap.width.toFloat()/p.bitmap.height
      val fittedWidth=minOf(maxWidth-16.dp,(maxHeight-16.dp)*ratio).coerceAtLeast(1.dp)
      Box(Modifier.size(fittedWidth,fittedWidth/ratio).shadow(3.dp,RoundedCornerShape(2.dp)).graphicsLayer(scaleX=zoom,scaleY=zoom,translationX=pan.x,translationY=pan.y)
       .onSizeChanged { pageW=it.width;pageH=it.height }
-      .pointerInput(p,tab,addingText,movingImages,pasteContent,busy,selectionPage,resizing,tableToPlace) {
-       if(!busy && tab=="Editar" && selectionPage==null && !resizing) detectTapGestures { point ->
+      .pointerInput(p,tab,addingText,movingImages,pasteContent,busy,selectionPage,resizing,tableToPlace,tableMode) {
+       if(!busy && tab=="Editar" && selectionPage==null && !resizing && (!tableMode || tableToPlace!=null)) detectTapGestures { point ->
         val norm=Offset(point.x/pageW,point.y/pageH)
         val pasted=pasteContent
         if(tableToPlace!=null) {
          val data=tableToPlace!!
-         task {applyChange("Tabla insertada") {doc->insertTable(context,doc,page,norm,data)}}
+         saveTable(data.copy(x=norm.x,y=norm.y),"Tabla insertada")
         } else if(pasted!=null) {
          pasteContent=null
          when(pasted) {
@@ -414,6 +443,8 @@ class MainActivity : ComponentActivity() {
            change("Imagen pegada",selectImageAfter=Int.MAX_VALUE) {doc ->val bitmap=decodePastedImage(context,pasted.uri);try {addImage(doc,page,bitmap,norm)} finally {bitmap.recycle()}}
           }
          }
+        } else if(!movingImages && !addingText && p.tables.any {it.rect.contains(norm)}) {
+         val table=p.tables.last {it.rect.contains(norm)};tableMode=true;selectedTable=table.id;openTableEditor(table,table.cellAt(norm))
         } else if(movingImages) {
          selectedImage=p.images.filter { it.rect.contains(norm) }.minByOrNull { it.rect.width*it.rect.height }?.ordinal
         } else if(addingText) { addTextAt=norm;newValue="" }
@@ -443,7 +474,7 @@ class MainActivity : ComponentActivity() {
       }) {
       Image(p.bitmap.asImageBitmap(),"Página ${page+1} del documento",Modifier.fillMaxSize())
       Canvas(Modifier.fillMaxSize()) {
-       if(tab=="Editar" && !addingText && !movingImages) p.fragments.forEach { f -> val r=f.rect;drawRect(Color(0x8017685C),Offset(r.left*size.width,r.top*size.height),Size(r.width*size.width,r.height*size.height),style=Stroke(1.5f)) }
+       if(tab=="Editar" && !tableMode && !addingText && !movingImages) p.fragments.forEach { f -> val r=f.rect;drawRect(Color(0x8017685C),Offset(r.left*size.width,r.top*size.height),Size(r.width*size.width,r.height*size.height),style=Stroke(1.5f)) }
        if(tab=="Editar" && movingImages) p.images.forEach { image ->
         val delta=if(draggingImage==image.ordinal) imageDelta else Offset.Zero
         val r=image.rect.translate(delta);val chosen=selectedImage==image.ordinal
@@ -456,6 +487,7 @@ class MainActivity : ComponentActivity() {
         val a=points.first();val b=points.last();drawRect(Color(0x66FFD200),Offset(minOf(a.x,b.x),minOf(a.y,b.y)),Size(kotlin.math.abs(a.x-b.x),kotlin.math.abs(a.y-b.y)))
        } else points.zipWithNext().forEach { (a,b) -> drawLine(Color(0xFF0D3359),a,b,2f) }
       }
+      if(tab=="Editar" && tableMode && tableToPlace==null && !busy) TablePageLayer(current!!,page,p.tables,selectedTable,onSelect={selectedTable=it},onEdit={table,cell->openTableEditor(table,cell)},onCommit={model->saveTable(model,"Tabla movida o redimensionada")},onError={status=it})
       if(tab=="Editar" && !busy) selectionPage?.let {textPage->TextSelectionLayer(textPage,selectionIndices) {selectionIndices=it}}
       if(tab=="Editar" && resizing && !busy) p.images.firstOrNull {it.ordinal==selectedImage}?.let {fragment->
        InteractiveImage(current!!,page,fragment,onCommit={factor,delta->
@@ -494,7 +526,10 @@ class MainActivity : ComponentActivity() {
   })
  }
  if(exportDialog) ExportDialog(onDismiss={exportDialog=false}) {word->exportDialog=false;exportEditable(word)}
- if(tableDialog) TableEditor(onDismiss={tableDialog=false},onConfirm={data->tableDialog=false;tableToPlace=data;tab="Editar";movingImages=false;resizing=false;selectionPage=null;pasteContent=null;addingText=false;status="Toca la página para colocar la tabla."})
+ if(tableDialog) ManagedTableSheet(initial=tableEditor,initialCell=tableCell,externalError=tableError,onDismiss={tableDialog=false},onConfirm={model->
+  if(tableEditor!=null) saveTable(model,"Celdas de tabla actualizadas")
+  else {tableDialog=false;tableToPlace=model;tab="Editar";tableMode=true;movingImages=false;resizing=false;selectionPage=null;pasteContent=null;addingText=false;status="Toca la página para colocar la tabla. Luego podrás moverla y editar sus celdas."}
+ })
  copiedTable?.let {data->TableEditor(initial=data,copyOnly=true,onDismiss={copiedTable=null},onConfirm={rows->
   val clipboard=context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
   clipboard.setPrimaryClip(android.content.ClipData.newHtmlText("Tabla PDF",tsv(rows),tableHtml(rows)));copiedTable=null;status="Tabla copiada. Pégala en Excel o Word."
@@ -517,7 +552,7 @@ class MainActivity : ComponentActivity() {
   var term by remember { mutableStateOf("") }
   AlertDialog(onDismissRequest={search=false},title={Text("Buscar en esta página")},text={Column { OutlinedTextField(term,{term=it},label={Text("Texto a buscar")});view?.fragments?.filter { term.isNotBlank() && it.text.contains(term,true) }?.forEach { f -> TextButton(onClick={search=false;tab="Editar";selected=f}) { Text(f.text,maxLines=2) } } }},confirmButton={TextButton(onClick={search=false}) { Text("Cerrar") }})
  }
- if(about) AlertDialog(onDismissRequest={about=false},title={Text("PDF Fácil Pro 2.5 beta")},text={Column(Modifier.verticalScroll(rememberScrollState())) {
+ if(about) AlertDialog(onDismissRequest={about=false},title={Text("PDF Fácil Pro 2.6 beta")},text={Column(Modifier.verticalScroll(rememberScrollState())) {
   Text("Editor gratuito, local y sin anuncios. La edición sustituye fragmentos de texto dentro del PDF. Incluye OCR latino local para exportar a Word y PDF de texto. La conversión puede cambiar el formato y requiere revisión.\n\nMotor basado en PDF Inspector, de Shardul Vikram Singh (MIT), y PDFBox Android (Apache 2.0). Fuentes Liberation con sus licencias. Avisos incluidos en la aplicación.")
   Text(context.assets.open("LICENCIA-PDF-INSPECTOR-MIT.txt").bufferedReader().use { it.readText() },fontSize=10.sp)
  }},confirmButton={TextButton(onClick={about=false}) { Text("Cerrar") }})

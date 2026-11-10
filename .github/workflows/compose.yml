@@ -46,12 +46,14 @@ jobs:
           working-directory: version-compose
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
-          script: python3 scripts/android_smoke.py
+          script: |
+            python3 scripts/android_smoke.py
+            python3 scripts/android_tables.py
       - name: Publicar capturas y prueba Android
         if: always() && github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: Verificacion-Android-2.5
+          name: Verificacion-Android-2.6
           path: version-compose/verification-android/
           if-no-files-found: ignore
       - name: Verificar el PDF exportado en Android
@@ -63,14 +65,14 @@ jobs:
         if: github.event_name != 'pull_request'
         run: |
           mkdir -p entrega
-          cp app/build/outputs/apk/debug/app-debug.apk entrega/PDF-Facil-Pro-2.5-beta.apk
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs entrega/PDF-Facil-Pro-2.5-beta.apk > entrega/FIRMA.txt
-          sha256sum entrega/PDF-Facil-Pro-2.5-beta.apk > entrega/SHA256.txt
+          cp app/build/outputs/apk/debug/app-debug.apk entrega/PDF-Facil-Pro-2.6-beta.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs entrega/PDF-Facil-Pro-2.6-beta.apk > entrega/FIRMA.txt
+          sha256sum entrega/PDF-Facil-Pro-2.6-beta.apk > entrega/SHA256.txt
           cp README.md entrega/INSTRUCCIONES.md
       - uses: actions/upload-artifact@v4
         if: github.event_name != 'pull_request'
         with:
-          name: PDF-Facil-Pro-2.5-Prueba-APK
+          name: PDF-Facil-Pro-2.6-Prueba-APK
           path: version-compose/entrega/*
           if-no-files-found: error
           retention-days: 30
@@ -93,7 +95,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: PDF-Facil-Pro-2.5-Prueba-APK
+          name: PDF-Facil-Pro-2.6-Prueba-APK
           path: entrega
       - name: Publicar APK firmada y probada
         env:
@@ -102,16 +104,16 @@ jobs:
           RELEASE_COMMIT: ${{ github.sha }}
         run: |
           cat > notas.md <<'NOTAS'
-          PDF Fácil Pro 2.5 beta: redimensionar imágenes con los dedos y previsualización real; seleccionar varias líneas; copiar tablas a Excel; insertar tablas; exportar Word .docx editable y PDF reconstruido de texto con OCR latino local. Conserva las herramientas de la 2.4.
+          PDF Fácil Pro 2.6 beta: tablas editables como objetos completos. Mover y cambiar ancho con el dedo, editar texto y números en cualquier celda, insertar imágenes con proporciones conservadas y ajustar filas/columnas al contenido. Recupera tablas creadas con 2.5. Conserva selección, Word/PDF editable, OCR, imágenes y compartir.
 
           APK de prueba compilada en GitHub, con firma de depuración y sin secretos externos. ESTA FIRMA ES DISTINTA DE LA VERSIONES ANTERIORES: guarda tus documentos fuera de la app, desinstala la anterior e instala esta APK. No se garantiza actualización con próximas compilaciones de prueba. Android pide confirmación para instalar y elegir visor predeterminado. El gestor de archivos decide los iconos y miniaturas.
 
           Word y PDF editable de texto reconstruidos: no conservan imágenes ni garantizan la distribución original. OCR local en páginas sin texto: revisar el resultado. Texto original editable por fragmentos. Selección de imágenes independientes compatibles. Revisa el resultado antes de compartir.
           NOTAS
-          if gh release view v2.5-beta >/dev/null 2>&1; then
-            gh api --method PATCH "repos/$GH_REPO/git/refs/tags/v2.5-beta" -f sha="$RELEASE_COMMIT" -F force=true >/dev/null
-            gh release upload v2.5-beta entrega/* --clobber
-            gh release edit v2.5-beta --title 'PDF Fácil Pro 2.5 beta · APK de prueba' --notes-file notas.md --prerelease
+          if gh release view v2.6-beta >/dev/null 2>&1; then
+            gh api --method PATCH "repos/$GH_REPO/git/refs/tags/v2.6-beta" -f sha="$RELEASE_COMMIT" -F force=true >/dev/null
+            gh release upload v2.6-beta entrega/* --clobber
+            gh release edit v2.6-beta --title 'PDF Fácil Pro 2.6 beta · APK de prueba' --notes-file notas.md --prerelease
           else
-            gh release create v2.5-beta entrega/* --target "$RELEASE_COMMIT" --title 'PDF Fácil Pro 2.5 beta · APK de prueba' --notes-file notas.md --prerelease
+            gh release create v2.6-beta entrega/* --target "$RELEASE_COMMIT" --title 'PDF Fácil Pro 2.6 beta · APK de prueba' --notes-file notas.md --prerelease
           fi

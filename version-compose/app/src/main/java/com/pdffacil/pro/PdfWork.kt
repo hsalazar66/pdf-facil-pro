@@ -16,8 +16,8 @@ import java.io.File
 
 internal data class TextFragment(val index: Int, val text: String, val size: Float, val font: String, val color: Int, val rect: Rect)
 internal data class ImageFragment(val ordinal: Int, val rect: Rect)
-internal data class PagePreview(val bitmap: Bitmap, val count: Int, val fragments: List<TextFragment>, val images: List<ImageFragment>, val width: Float, val height: Float, val rotation: Int)
-private data class PreviewMeta(val fragments: List<TextFragment>, val images: List<ImageFragment>, val width: Float, val height: Float, val rotation: Int)
+internal data class PagePreview(val bitmap: Bitmap, val count: Int, val fragments: List<TextFragment>, val images: List<ImageFragment>, val width: Float, val height: Float, val rotation: Int,val tables:List<ManagedTable> = emptyList())
+private data class PreviewMeta(val fragments: List<TextFragment>, val images: List<ImageFragment>, val width: Float, val height: Float, val rotation: Int,val tables:List<ManagedTable>)
 internal fun textRuns(node: DrawNode): List<DrawNode> = if (node.kind == NodeKind.TEXT && node.children.isEmpty()) listOf(node) else node.children.flatMap { textRuns(it) }
 
 /** Replaces the existing Tj/TJ operand. It does not append a visual replacement. */
@@ -61,12 +61,12 @@ internal fun preview(file: File, number: Int): PagePreview {
    val corners=listOf(screen(b.minX,b.minY),screen(b.minX,b.maxY),screen(b.maxX,b.minY),screen(b.maxX,b.maxY))
    ImageFragment(ordinal,Rect(corners.minOf { it.x },corners.minOf { it.y },corners.maxOf { it.x },corners.maxOf { it.y }))
   } ?: emptyList()
-  PreviewMeta(fragments,images,c.width,c.height,rotation)
+  PreviewMeta(fragments,images,c.width,c.height,rotation,readManagedTables(p))
  }
  return ParcelFileDescriptor.open(file,ParcelFileDescriptor.MODE_READ_ONLY).use { fd -> PdfRenderer(fd).use { renderer -> renderer.openPage(number).use { p ->
   val scale=minOf(2f,1800f/p.width); val bitmap=Bitmap.createBitmap((p.width*scale).toInt(),(p.height*scale).toInt(),Bitmap.Config.ARGB_8888)
   bitmap.eraseColor(android.graphics.Color.WHITE); p.render(bitmap,null,null,PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-  PagePreview(bitmap,renderer.pageCount,meta.fragments,meta.images,meta.width,meta.height,meta.rotation)
+  PagePreview(bitmap,renderer.pageCount,meta.fragments,meta.images,meta.width,meta.height,meta.rotation,meta.tables)
  } } }
 }
 

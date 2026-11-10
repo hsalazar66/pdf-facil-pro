@@ -7,7 +7,7 @@ android {
  namespace = "com.pdffacil.pro"
  compileSdk = 35
  buildToolsVersion = "35.0.0"
- defaultConfig { applicationId = "com.pdffacil.pro"; minSdk = 29; targetSdk = 35; versionCode = 8; versionName = "2.5-beta" }
+ defaultConfig { applicationId = "com.pdffacil.pro"; minSdk = 29; targetSdk = 35; versionCode = 9; versionName = "2.6-beta" }
  signingConfigs {
   val keyPath = System.getenv("ANDROID_SIGNING_KEYSTORE_PATH")
   if (!keyPath.isNullOrBlank()) {

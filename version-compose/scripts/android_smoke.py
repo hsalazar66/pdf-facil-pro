@@ -221,17 +221,18 @@ assert exported.startswith(b'%PDF-'), 'El archivo exportado no es PDF'
 (OUT/'resultado-editado.pdf').write_bytes(exported)
 screenshot('12-pdf-guardado')
 # Insert an actual vector/text table and select several rows for external clipboard.
-tap('Herramientas');tap('Tabla');wait_for('Insertar tabla')
-for label,value in [('1,1','Nombre'),('1,2','Monto'),('2,1','Jose'),('2,2','42')]:
-    tap(label);adb('shell','input','text',value)
+tap('Herramientas');tap('Tabla');wait_for('Nueva tabla')
+for label,value in [('Celda 1,1','Nombre'),('Celda 1,2','Monto'),('Celda 2,1','Jose'),('Celda 2,2','42')]:
+    tap(label);tap('Contenido de la celda');adb('shell','input','text',value)
     adb('shell','input','keyevent','4');time.sleep(0.4)
 tap('Colocar tabla')
 l,t,r,b=bounds(wait_for('Página 2 del documento'))
 adb('shell','input','tap',str(round(l+(r-l)*0.08)),str(round(t+(b-t)*0.55)))
 wait_for('Tabla insertada',partial=True)
+tap('Cerrar tablas')
 tap('Seleccionar varias líneas / tabla')
 l,t,r,b=bounds(wait_for('Seleccionar varias líneas y tablas'))
-adb('shell','input','swipe',str(round(l+(r-l)*0.05)),str(round(t+(b-t)*0.53)),str(round(l+(r-l)*0.92)),str(round(t+(b-t)*0.68)),'900')
+adb('shell','input','swipe',str(round(l+(r-l)*0.05)),str(round(t+(b-t)*0.53)),str(round(l+(r-l)*0.92)),str(round(t+(b-t)*0.73)),'900')
 tap('Copiar líneas');wait_for('Varias líneas copiadas',partial=True)
 tap('Copiar tabla');wait_for('Revisar tabla para copiar');wait_for('Nombre');wait_for('Jose');wait_for('Monto');wait_for('42');screenshot('13-tabla-seleccionada');tap('Copiar tabla');wait_for('Tabla copiada',partial=True)
 tap('Cerrar selección')
