@@ -19,7 +19,7 @@ import kotlin.math.*
 
 internal data class TableCell(val text:String="",val picture:ByteArray?=null,val pictureWidth:Int=0,val pictureHeight:Int=0)
 internal data class ManagedTable(
- val id:String=UUID.randomUUID().toString(),val cells:List<List<TableCell>>=List(3) {List(3) {TableCell()}},
+ val id:String=UUID.randomUUID().toString(),val cells:List<List<TableCell>> = List(3) {List(3) {TableCell()}},
  val x:Float=0.09f,val y:Float=0.15f,val width:Float=0.82f,val height:Float=0f,
  val columns:List<Float> = emptyList(),val rows:List<Float> = emptyList(),val rotation:Int=0,val legacy:Boolean=false,
  val fontSize:Float=12f
