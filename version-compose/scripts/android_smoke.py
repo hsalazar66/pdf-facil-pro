@@ -39,7 +39,7 @@ def wait_for(label, partial=False, seconds=55):
             result = find(tree(), label, partial)
             if result is not None:
                 return result
-        except (ET.ParseError, subprocess.CalledProcessError):
+        except (ET.ParseError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
             pass
         time.sleep(1)
     screenshot('error')
@@ -239,13 +239,19 @@ tap('Cerrar selección')
 def save_picker():
     deadline=time.monotonic()+70
     while time.monotonic()<deadline:
-        current=tree()
+        try:
+            current=tree()
+        except (ET.ParseError,subprocess.CalledProcessError,subprocess.TimeoutExpired):
+            time.sleep(1)
+            continue
         n=next((n for n in current.iter('node') if n.attrib.get('resource-id','').endswith(':id/action_menu_save')),None)
         if n is None:
             n=next((n for n in current.iter('node') if 'documentsui' in n.attrib.get('package','') and n.attrib.get('text') in ('SAVE','Save','GUARDAR','Guardar')),None)
         if n is not None:
             l,t,r,b=bounds(n);adb('shell','input','tap',str((l+r)//2),str((t+b)//2));return
         time.sleep(1)
+    screenshot('error-exportacion')
+    (OUT/'logcat-exportacion.txt').write_text(adb('logcat','-d','-t','300'))
     raise AssertionError('No apareció el selector de exportación')
 for option,suffix,result in [('Word editable (.docx)','docx','Word editable guardado'),('PDF editable (texto)','pdf','PDF editable de texto guardado')]:
     tap('Herramientas');tap('Exportar');tap(option);save_picker();wait_for(result,partial=True)
